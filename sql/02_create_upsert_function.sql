@@ -1,49 +1,59 @@
-create or replace function upsert_tweets(tweets jsonb)
-returns void
-language plpgsql
-security definer
-as $$
-begin
-  insert into tweets (
-    tweet_id,
-    tweet_user_name,
-    tweet_user_nick,
-    tweet_text,
-    tweet_full_text,
-    tweet_created_at_datetime,
-    tweet_retweet_count,
-    tweet_likes,
-    tweet_photo_urls,
-    tweet_lang,
-    tweet_view_count
-  )
-  select 
-    (tweet->>'tweet_id')::bigint,
-    tweet->>'tweet_user_name',
-    tweet->>'tweet_user_nick',
-    tweet->>'tweet_text',
-    tweet->>'tweet_full_text',
-    (tweet->>'tweet_created_at_datetime')::timestamp,
-    (tweet->>'tweet_retweet_count')::integer,
-    (tweet->>'tweet_likes')::integer,
-    case 
-      when tweet->>'tweet_photo_urls' is null then null
-      else (tweet->>'tweet_photo_urls')::text[]
-    end,
-    tweet->>'tweet_lang',
-    (tweet->>'tweet_view_count')::integer
-  from jsonb_array_elements(tweets) tweet
-  on conflict (tweet_id) do update set
-    tweet_user_name = excluded.tweet_user_name,
-    tweet_user_nick = excluded.tweet_user_nick,
-    tweet_text = excluded.tweet_text,
-    tweet_full_text = excluded.tweet_full_text,
-    tweet_created_at_datetime = excluded.tweet_created_at_datetime,
-    tweet_retweet_count = excluded.tweet_retweet_count,
-    tweet_likes = excluded.tweet_likes,
-    tweet_photo_urls = excluded.tweet_photo_urls,
-    tweet_lang = excluded.tweet_lang,
-    tweet_view_count = excluded.tweet_view_count,
-    updated_at = CURRENT_TIMESTAMP;
-end;
-$$; 
+-- Drop function if it exists
+-- DROP FUNCTION IF EXISTS upsert_tweets(jsonb);
+
+CREATE OR REPLACE FUNCTION upsert_tweets(tweets jsonb)
+RETURNS TABLE (
+    tweet_id BIGINT,
+    is_new BOOLEAN
+) AS $$
+DECLARE
+    inserted_rows bigint;
+BEGIN
+    WITH ins AS (
+        INSERT INTO tweets (
+            tweet_id,
+            tweet_user_name,
+            tweet_user_nick,
+            tweet_text,
+            tweet_full_text,
+            tweet_created_at_datetime,
+            tweet_retweet_count,
+            tweet_likes,
+            tweet_photo_urls,
+            tweet_lang,
+            tweet_view_count,
+            first_seen_at
+        )
+        SELECT 
+            (value->>'tweet_id')::BIGINT,
+            value->>'tweet_user_name',
+            value->>'tweet_user_nick',
+            value->>'tweet_text',
+            value->>'tweet_full_text',
+            (value->>'tweet_created_at_datetime')::TIMESTAMP WITH TIME ZONE,
+            (value->>'tweet_retweet_count')::INTEGER,
+            (value->>'tweet_likes')::INTEGER,
+            (value->>'tweet_photo_urls')::TEXT[],
+            value->>'tweet_lang',
+            (value->>'tweet_view_count')::INTEGER,
+            CURRENT_TIMESTAMP
+        FROM jsonb_array_elements(tweets)
+        ON CONFLICT (tweet_id) DO UPDATE
+        SET
+            tweet_retweet_count = EXCLUDED.tweet_retweet_count,
+            tweet_likes = EXCLUDED.tweet_likes,
+            tweet_view_count = EXCLUDED.tweet_view_count
+        WHERE tweets.tweet_id = EXCLUDED.tweet_id
+        RETURNING tweets.tweet_id
+    )
+    SELECT 
+        i.tweet_id,
+        EXISTS (
+            SELECT 1 
+            FROM tweets t 
+            WHERE t.tweet_id = i.tweet_id 
+            AND t.first_seen_at >= CURRENT_TIMESTAMP - interval '1 minute'
+        ) as is_new
+    FROM ins i;
+END;
+$$ LANGUAGE plpgsql; 

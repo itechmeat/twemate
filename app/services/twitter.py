@@ -7,6 +7,7 @@ class TwitterClient:
         self.client = Client('en-US')
         self.client.load_cookies('cookies.json')
         self.credentials = get_twitter_credentials()
+        print(f'🙍‍♂️ Username: {self.credentials["username"]}')
 
     async def authenticate(self):
         print(f'{datetime.now()} - Logging in...')

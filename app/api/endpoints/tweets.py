@@ -12,6 +12,8 @@ from app.models.schemas import SearchParams, TimelineParams, TweetData
 from app.services.twitter import TwitterClient
 from app.services.supabase import supabase
 import logging
+import random
+import asyncio
 
 router = APIRouter()
 twitter_client = TwitterClient()
@@ -52,10 +54,40 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
     } for tweet in tweets_data]
     
     try:
+        logger.info(f"Upserting {len(db_tweets)} tweets...")
         response = supabase.rpc(
             'upsert_tweets',
             {'tweets': db_tweets}
         ).execute()
+        
+        if not response.data:
+            logger.warning("No response data from upsert operation")
+            return True
+            
+        new_tweets = [
+            (row['tweet_id'], tweets_data[i].likes) 
+            for i, row in enumerate(response.data) 
+            if row['is_new']
+        ]
+        
+        logger.info(f"Found {len(new_tweets)} new tweets")
+        
+        if new_tweets:
+            most_liked_tweet = max(new_tweets, key=lambda x: x[1])
+            most_liked_tweet_id = most_liked_tweet[0]
+            likes_count = most_liked_tweet[1]
+            
+            logger.info(f"Selected tweet {most_liked_tweet_id} with {likes_count} likes for favoriting")
+            
+            delay = random.randint(50, 70)
+            logger.info(f"Waiting {delay} seconds before liking tweet {most_liked_tweet_id}")
+            await asyncio.sleep(delay)
+            
+            try:
+                await favorite_tweet(most_liked_tweet_id)
+                logger.info(f"Successfully queued like for tweet {most_liked_tweet_id}")
+            except Exception as e:
+                logger.error(f"Failed to like tweet {most_liked_tweet_id}: {str(e)}")
         
         return True
     except Exception as e:
@@ -141,3 +173,18 @@ async def get_latest_user_timeline(params: TimelineParams):
     if await upsert_tweets_batch(batch_tweets):
         logger.info(f"🐶 Successfully processed {len(results)} tweets from latest timeline")
     return results 
+
+@router.post("/favorite_tweet/{tweet_id}")
+async def favorite_tweet(tweet_id: int):
+    logger.info(f"🎯 Attempting to favorite tweet {tweet_id}")
+    
+    async def do_favorite():
+        return await twitter_client.client.favorite_tweet(tweet_id)
+    
+    try:
+        result = await handle_twitter_request(do_favorite)
+        logger.info(f"💜 Successfully favorited tweet {tweet_id}")
+        return {"status": "success", "tweet_id": tweet_id}
+    except Exception as e:
+        logger.error(f"Failed to favorite tweet {tweet_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
