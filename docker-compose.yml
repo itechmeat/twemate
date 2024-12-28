@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  twimate-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: twimate-api
+    hostname: twimate-api
+    ports:
+      - "4750:4750"
+    volumes:
+      - ./cookies.json:/app/cookies.json
+      - ./app:/app/app
+    restart: unless-stopped
+    networks:
+      - n8n-network
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    hostname: n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    restart: unless-stopped
+    networks:
+      - n8n-network
+
+volumes:
+  n8n_data:
+    external: true
+
+networks:
+  n8n-network:
+    external: true
