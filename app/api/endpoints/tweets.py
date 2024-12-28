@@ -11,9 +11,11 @@ from twikit import (
 from app.models.schemas import SearchParams, TimelineParams, TweetData
 from app.services.twitter import TwitterClient
 from app.services.supabase import supabase
+import logging
 
 router = APIRouter()
 twitter_client = TwitterClient()
+logger = logging.getLogger(__name__)
 
 async def handle_twitter_request(request_func):
     try:
@@ -44,37 +46,20 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
         "tweet_created_at_datetime": tweet.created_at,
         "tweet_retweet_count": tweet.retweets,
         "tweet_likes": tweet.likes,
-        "tweet_photo_urls": tweet.photo_urls if tweet.photo_urls else None,
+        "tweet_photo_urls": "{" + ",".join(f'"{url}"' for url in tweet.photo_urls) + "}" if tweet.photo_urls else None,
         "tweet_lang": tweet.tweet_lang,
         "tweet_view_count": 0,
     } for tweet in tweets_data]
     
     try:
-        tweet_ids = [tweet.tweet_id for tweet in tweets_data]
-        existing_tweets = (
-            supabase.table("tweets")
-            .select("tweet_id")
-            .in_("tweet_id", tweet_ids)
-            .execute()
-        )
+        response = supabase.rpc(
+            'upsert_tweets',
+            {'tweets': db_tweets}
+        ).execute()
         
-        existing_ids = {tweet['tweet_id'] for tweet in existing_tweets.data}
-        
-        tweets_to_insert = [tweet for tweet in db_tweets if tweet['tweet_id'] not in existing_ids]
-        tweets_to_update = [tweet for tweet in db_tweets if tweet['tweet_id'] in existing_ids]
-        
-        if tweets_to_insert:
-            supabase.table("tweets").insert(tweets_to_insert).execute()
-            print(f"Inserted {len(tweets_to_insert)} new tweets")
-            
-        if tweets_to_update:
-            for tweet in tweets_to_update:
-                supabase.table("tweets").update(tweet).eq("tweet_id", tweet['tweet_id']).execute()
-            print(f"Updated {len(tweets_to_update)} existing tweets")
-            
         return True
     except Exception as e:
-        print(f"Error in batch processing tweets: {str(e)}")
+        logger.error(f"Error in batch processing tweets: {str(e)}")
         return None
 
 @router.post("/search_tweets", response_model=List[TweetData])
@@ -88,11 +73,11 @@ async def search_tweets(params: SearchParams):
         async def get_tweets():
             nonlocal tweets
             if tweets is None:
-                print(f'{datetime.now()} - Getting tweets...')
+                logger.info(f'Getting tweets...')
                 return await twitter_client.client.search_tweet(params.query, product='Latest')
             else:
                 wait_time = randint(5, 10)
-                print(f'{datetime.now()} - Getting next tweets after {wait_time} seconds ...')
+                logger.info(f'Getting next tweets after {wait_time} seconds ...')
                 time.sleep(wait_time)
                 return await tweets.next()
 
@@ -121,6 +106,7 @@ async def search_tweets(params: SearchParams):
 
 @router.post("/timeline", response_model=List[TweetData])
 async def get_user_timeline(params: TimelineParams):
+    logger.info("Fetching user timeline...")
     async def get_timeline():
         return await twitter_client.client.get_timeline(count=params.minimum_tweets)
 
@@ -133,11 +119,13 @@ async def get_user_timeline(params: TimelineParams):
         results.append(tweet_data)
         batch_tweets.append(TweetData(**tweet_data))
 
-    await upsert_tweets_batch(batch_tweets)
+    if await upsert_tweets_batch(batch_tweets):
+        logger.info(f"🐵 Successfully processed {len(results)} tweets from user timeline")
     return results
 
 @router.post("/latest_timeline", response_model=List[TweetData])
 async def get_latest_user_timeline(params: TimelineParams):
+    logger.info("Fetching latest timeline...")
     async def get_latest_timeline():
         return await twitter_client.client.get_latest_timeline(count=params.minimum_tweets)
 
@@ -150,5 +138,6 @@ async def get_latest_user_timeline(params: TimelineParams):
         results.append(tweet_data)
         batch_tweets.append(TweetData(**tweet_data))
 
-    await upsert_tweets_batch(batch_tweets)
+    if await upsert_tweets_batch(batch_tweets):
+        logger.info(f"🐶 Successfully processed {len(results)} tweets from latest timeline")
     return results 

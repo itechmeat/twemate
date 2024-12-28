@@ -1,10 +1,18 @@
 from fastapi import FastAPI
-from app.api.routes import setup_routes
+from app.api.routes import router
+from app.api.scheduler import scheduled_tweets_fetch
+import asyncio
+import logging
 
-app = FastAPI(title="TwiMate API")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
-setup_routes(app)
+app = FastAPI()
+app.include_router(router)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=4750) 
+@app.on_event("startup")
+async def start_scheduler():
+    asyncio.create_task(scheduled_tweets_fetch()) 

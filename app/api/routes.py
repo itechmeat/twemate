@@ -1,5 +1,10 @@
-from fastapi import FastAPI
+from fastapi import APIRouter
 from app.api.endpoints import tweets
 
-def setup_routes(app: FastAPI):
-    app.include_router(tweets.router, tags=["tweets"]) 
+router = APIRouter()
+
+router.include_router(
+    tweets.router,
+    prefix="/tweets",
+    tags=["tweets"]
+) 
