@@ -28,6 +28,20 @@ This service provides a FastAPI-based REST API for interacting with Twitter (X) 
 pip install -r requirements.txt
 ```
 
+3. Create a `.env` file with the following variables:
+
+```bash
+TWITTER_API_KEY=your_twitter_api_key
+TWITTER_API_SECRET_KEY=your_twitter_api_secret_key
+TWITTER_ACCESS_TOKEN=your_twitter_access_token
+TWITTER_ACCESS_TOKEN_SECRET=your_twitter_access_token_secret
+```
+
+4. Create a table and function in Supabase from
+
+- `sql/01_create_tweets_table.sql`
+- `sql/02_create_upsert_function.sql`
+
 ## Usage
 
 ```bash
@@ -86,16 +100,24 @@ All endpoints return tweets in the following format:
 [
   {
     "tweet_id": "string",
-    "tweet_count": 0,
-    "username": "string",
+    "tweet_user_name": "string",
+    "tweet_user_nick": "string",
     "text": "string",
     "created_at": "string",
     "retweets": 0,
     "likes": 0,
-    "photo_urls": ["string"]
+    "photo_urls": ["string"],
+    "tweet_lang": "string"
   }
 ]
 ```
+
+The tweets are also stored in the database with additional fields:
+
+- `tweet_full_text`: Full text of the tweet
+- `tweet_view_count`: Number of views (default 0)
+- `created_at`: Timestamp when the tweet was first stored
+- `updated_at`: Timestamp of the last update
 
 ## Error Handling
 
