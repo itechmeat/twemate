@@ -37,15 +37,15 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
         
     db_tweets = [{
         "tweet_id": tweet.tweet_id,
-        "tweet_user_name": tweet.username,
+        "tweet_user_name": tweet.tweet_user_name,
+        "tweet_user_nick": tweet.tweet_user_nick,
         "tweet_text": tweet.text,
         "tweet_full_text": tweet.text,
         "tweet_created_at_datetime": tweet.created_at,
         "tweet_retweet_count": tweet.retweets,
         "tweet_likes": tweet.likes,
         "tweet_photo_urls": tweet.photo_urls if tweet.photo_urls else None,
-        "tweet_lang": 'en',
-        "tweet_in_reply_to": None,
+        "tweet_lang": tweet.tweet_lang,
         "tweet_view_count": 0,
     } for tweet in tweets_data]
     

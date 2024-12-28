@@ -33,11 +33,12 @@ class TwitterClient:
         photo_urls = self.get_photo_urls(tweet.media if hasattr(tweet, 'media') else [])
         return {
             'tweet_id': tweet.id,
-            'tweet_count': tweet_count,
-            'username': tweet.user.name,
+            'tweet_user_name': tweet.user.name,
+            'tweet_user_nick': tweet.user.screen_name,
             'text': tweet.text,
             'created_at': str(tweet.created_at),
             'retweets': tweet.retweet_count,
             'likes': tweet.favorite_count,
-            'photo_urls': photo_urls
+            'photo_urls': photo_urls,
+            'tweet_lang': tweet.lang,
         } 
