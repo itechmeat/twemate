@@ -45,57 +45,85 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
     if not tweets_data:
         return None
         
-    db_tweets = [{
-        "tweet_id": tweet.tweet_id,
-        "tweet_user_name": tweet.tweet_user_name,
-        "tweet_user_nick": tweet.tweet_user_nick,
-        "tweet_text": tweet.text,
-        "tweet_full_text": tweet.text,
-        "tweet_created_at_datetime": tweet.created_at,
-        "tweet_retweet_count": tweet.retweets,
-        "tweet_likes": tweet.likes,
-        "tweet_photo_urls": "{" + ",".join(f'"{url}"' for url in tweet.photo_urls) + "}" if tweet.photo_urls else None,
-        "tweet_lang": tweet.tweet_lang,
-        "tweet_view_count": 0,
-    } for tweet in tweets_data]
-    
     try:
-        logger.info(f"Upserting {len(db_tweets)} tweets...")
-        response = supabase.rpc(
-            'upsert_tweets',
-            {'input_tweets': db_tweets}
-        ).execute()
+        logger.info(f"Processing {len(tweets_data)} tweets...")
         
-        if not response.data:
-            logger.warning("No response data from upsert operation")
-            return True
-            
-        new_tweets = [
-            (row['tweet_id'], tweets_data[i].likes) 
-            for i, row in enumerate(response.data) 
-            if row['is_new']
-        ]
+        # Preparing data
+        db_tweets = []
+        tweet_ids = []
+        tweets_map = {}
         
-        logger.info(f"Found {len(new_tweets)} new tweets")
+        for tweet in tweets_data:
+            db_tweet = {
+                "tweet_id": tweet.tweet_id,
+                "tweet_user_name": tweet.tweet_user_name,
+                "tweet_user_nick": tweet.tweet_user_nick,
+                "tweet_text": tweet.text,
+                "tweet_full_text": tweet.text,
+                "tweet_created_at_datetime": tweet.created_at,
+                "tweet_retweet_count": tweet.retweets,
+                "tweet_likes": tweet.likes,
+                "tweet_photo_urls": "{" + ",".join(f'"{url}"' for url in tweet.photo_urls) + "}" if tweet.photo_urls else None,
+                "tweet_lang": tweet.tweet_lang,
+                "tweet_view_count": 0
+            }
+            db_tweets.append(db_tweet)
+            tweet_ids.append(tweet.tweet_id)
+            tweets_map[tweet.tweet_id] = db_tweet
+            
+        # Getting existing tweets in one request
+        existing = supabase.table('tweets') \
+            .select('tweet_id') \
+            .in_('tweet_id', tweet_ids) \
+            .execute()
+            
+        existing_ids = {tweet['tweet_id'] for tweet in existing.data}
         
-        if new_tweets:
-            most_liked_tweet = max(new_tweets, key=lambda x: x[1])
-            most_liked_tweet_id = most_liked_tweet[0]
-            likes_count = most_liked_tweet[1]
-            
-            logger.info(f"Selected tweet {most_liked_tweet_id} with {likes_count} likes for favoriting")
-            
-            delay = random.randint(50, 70)
-            logger.info(f"Waiting {delay} seconds before liking tweet {most_liked_tweet_id}")
-            await asyncio.sleep(delay)
-            
-            try:
-                await favorite_tweet(most_liked_tweet_id)
-                logger.info(f"Successfully queued like for tweet {most_liked_tweet_id}")
-            except Exception as e:
-                logger.error(f"Failed to like tweet {most_liked_tweet_id}: {str(e)}")
+        # Separating into new and updated tweets
+        tweets_to_insert = []
+        tweets_to_update = []
+        current_time = datetime.now().isoformat()
         
+        for tweet in db_tweets:
+            if tweet['tweet_id'] in existing_ids:
+                tweets_to_update.append(tweet)
+            else:
+                tweet['first_seen_at'] = current_time
+                tweets_to_insert.append(tweet)
+        
+        # Inserting new tweets in one batch
+        if tweets_to_insert:
+            supabase.table('tweets') \
+                .insert(tweets_to_insert) \
+                .execute()
+            logger.info(f"Inserted {len(tweets_to_insert)} new tweets")
+            
+        # Updating existing tweets one by one
+        if tweets_to_update:
+            for tweet in tweets_to_update:
+                tweet_id = tweet['tweet_id']
+                update_data = {
+                    "tweet_user_name": tweet['tweet_user_name'],
+                    "tweet_user_nick": tweet['tweet_user_nick'],
+                    "tweet_text": tweet['tweet_text'],
+                    "tweet_full_text": tweet['tweet_full_text'],
+                    "tweet_created_at_datetime": tweet['tweet_created_at_datetime'],
+                    "tweet_retweet_count": tweet['tweet_retweet_count'],
+                    "tweet_likes": tweet['tweet_likes'],
+                    "tweet_photo_urls": tweet['tweet_photo_urls'],
+                    "tweet_lang": tweet['tweet_lang'],
+                    "tweet_view_count": tweet['tweet_view_count'],
+                    "updated_at": current_time
+                }
+                supabase.table('tweets') \
+                    .update(update_data) \
+                    .eq('tweet_id', tweet_id) \
+                    .execute()
+            logger.info(f"Updated {len(tweets_to_update)} existing tweets")
+                
+        logger.info(f"Successfully processed all {len(tweets_data)} tweets")
         return True
+        
     except Exception as e:
         logger.error(f"Error in batch processing tweets: {str(e)}")
         return None
