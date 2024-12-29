@@ -146,8 +146,12 @@ async def get_tweets(params: SearchParams | TimelineParams):
         logger.info('Fetching tweets from Twitter API...')
         if isinstance(params, SearchParams):
             return await twitter_client.client.search_tweet(params.query, product='Latest')
-        else:
-            return await twitter_client.client.get_timeline()
+        elif isinstance(params, TimelineParams):
+            # Split requests for timeline and latest_timeline
+            if getattr(params, 'is_latest', False):
+                return await twitter_client.client.get_latest_timeline()
+            else:
+                return await twitter_client.client.get_timeline()
 
 @router.post("/search_tweets", response_model=List[TweetData])
 async def search_tweets(params: SearchParams):
@@ -192,12 +196,14 @@ async def search_tweets(params: SearchParams):
 
 @router.post("/timeline", response_model=List[TweetData])
 async def get_user_timeline(params: TimelineParams):
-    logger.info("Fetching user timeline...")
+    logger.info("Fetching user timeline (For You)...")
     
-    async def get_timeline():
-        return await get_tweets(params)
+    async def get_timeline_tweets():
+        if USE_TWITTER_MOCKS:
+            return await fetch_tweets_from_file()
+        return await twitter_client.client.get_timeline()
 
-    tweets = await handle_twitter_request(get_timeline)
+    tweets = await handle_twitter_request(get_timeline_tweets)
     results = []
     batch_tweets = []
 
@@ -207,17 +213,19 @@ async def get_user_timeline(params: TimelineParams):
         batch_tweets.append(TweetData(**tweet_data))
 
     if await upsert_tweets_batch(batch_tweets):
-        logger.info(f"🐵 Successfully processed {len(results)} tweets from user timeline")
+        logger.info(f"🐵 Successfully processed {len(results)} tweets from For You timeline")
     return results
 
 @router.post("/latest_timeline", response_model=List[TweetData])
 async def get_latest_user_timeline(params: TimelineParams):
-    logger.info("Fetching latest timeline...")
+    logger.info("Fetching latest timeline (Following)...")
     
-    async def get_latest_timeline():
-        return await get_tweets(params)
+    async def get_latest_timeline_tweets():
+        if USE_TWITTER_MOCKS:
+            return await fetch_tweets_from_file()
+        return await twitter_client.client.get_latest_timeline()
 
-    tweets = await handle_twitter_request(get_latest_timeline)
+    tweets = await handle_twitter_request(get_latest_timeline_tweets)
     results = []
     batch_tweets = []
 
@@ -227,8 +235,8 @@ async def get_latest_user_timeline(params: TimelineParams):
         batch_tweets.append(TweetData(**tweet_data))
 
     if await upsert_tweets_batch(batch_tweets):
-        logger.info(f"🐶 Successfully processed {len(results)} tweets from latest timeline")
-    return results 
+        logger.info(f"🐶 Successfully processed {len(results)} tweets from Following timeline")
+    return results
 
 @router.post("/favorite_tweet/{tweet_id}")
 async def favorite_tweet(tweet_id: int):
