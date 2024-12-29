@@ -98,11 +98,12 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
                 .execute()
             logger.info(f"Inserted {len(tweets_to_insert)} new tweets")
             
-        # Updating existing tweets one by one
+        # Updating existing tweets in one batch
         if tweets_to_update:
+            update_data = []
             for tweet in tweets_to_update:
                 tweet_id = tweet['tweet_id']
-                update_data = {
+                update_data.append({
                     "tweet_user_name": tweet['tweet_user_name'],
                     "tweet_user_nick": tweet['tweet_user_nick'],
                     "tweet_text": tweet['tweet_text'],
@@ -114,11 +115,11 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
                     "tweet_lang": tweet['tweet_lang'],
                     "tweet_view_count": tweet['tweet_view_count'],
                     "updated_at": current_time
-                }
-                supabase.table('tweets') \
-                    .update(update_data) \
-                    .eq('tweet_id', tweet_id) \
-                    .execute()
+                })
+            supabase.table('tweets') \
+                .update(update_data) \
+                .in_('tweet_id', [tweet['tweet_id'] for tweet in tweets_to_update]) \
+                .execute()
             logger.info(f"Updated {len(tweets_to_update)} existing tweets")
                 
         logger.info(f"Successfully processed all {len(tweets_data)} tweets")
@@ -195,16 +196,10 @@ async def get_user_timeline(params: TimelineParams):
     results = []
     batch_tweets = []
 
-    max_likes_tweet = max(tweets, key=lambda tweet: tweet.favorite_count, default=None)
-
     for i, tweet in enumerate(tweets[:params.minimum_tweets]):
         tweet_data = twitter_client.process_tweet(tweet, i + 1)
         results.append(tweet_data)
         batch_tweets.append(TweetData(**tweet_data))
-
-    if max_likes_tweet and not USE_TWITTER_MOCKS:
-        await asyncio.sleep(random.randint(25, 35))
-        await favorite_tweet(max_likes_tweet.id)
 
     if await upsert_tweets_batch(batch_tweets):
         logger.info(f"🐵 Successfully processed {len(results)} tweets from user timeline")
@@ -221,12 +216,12 @@ async def get_latest_user_timeline(params: TimelineParams):
     results = []
     batch_tweets = []
 
-    max_likes_tweet = max(tweets, key=lambda tweet: tweet.favorite_count, default=None)
-
     for i, tweet in enumerate(tweets[:params.minimum_tweets]):
         tweet_data = twitter_client.process_tweet(tweet, i + 1)
         results.append(tweet_data)
         batch_tweets.append(TweetData(**tweet_data))
+
+    max_likes_tweet = max(tweets, key=lambda tweet: tweet.favorite_count, default=None)
 
     if max_likes_tweet and not USE_TWITTER_MOCKS:
         await asyncio.sleep(random.randint(25, 35))
