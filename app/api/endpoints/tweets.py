@@ -195,10 +195,16 @@ async def get_user_timeline(params: TimelineParams):
     results = []
     batch_tweets = []
 
+    max_likes_tweet = max(tweets, key=lambda tweet: tweet.favorite_count, default=None)
+
     for i, tweet in enumerate(tweets[:params.minimum_tweets]):
         tweet_data = twitter_client.process_tweet(tweet, i + 1)
         results.append(tweet_data)
         batch_tweets.append(TweetData(**tweet_data))
+
+    if max_likes_tweet and not USE_TWITTER_MOCKS:
+        await asyncio.sleep(random.randint(25, 35))
+        await favorite_tweet(max_likes_tweet.id)
 
     if await upsert_tweets_batch(batch_tweets):
         logger.info(f"🐵 Successfully processed {len(results)} tweets from user timeline")
@@ -215,10 +221,16 @@ async def get_latest_user_timeline(params: TimelineParams):
     results = []
     batch_tweets = []
 
+    max_likes_tweet = max(tweets, key=lambda tweet: tweet.favorite_count, default=None)
+
     for i, tweet in enumerate(tweets[:params.minimum_tweets]):
         tweet_data = twitter_client.process_tweet(tweet, i + 1)
         results.append(tweet_data)
         batch_tweets.append(TweetData(**tweet_data))
+
+    if max_likes_tweet and not USE_TWITTER_MOCKS:
+        await asyncio.sleep(random.randint(25, 35))
+        await favorite_tweet(max_likes_tweet.id)
 
     if await upsert_tweets_batch(batch_tweets):
         logger.info(f"🐶 Successfully processed {len(results)} tweets from latest timeline")
