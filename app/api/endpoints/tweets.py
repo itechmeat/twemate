@@ -99,7 +99,7 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
             logger.info(f"Inserted {len(tweets_to_insert)} new tweets")
             
             max_likes_tweet = max(tweets_to_insert, key=lambda tweet: tweet['tweet_likes'], default=None)
-            if max_likes_tweet and not USE_TWITTER_MOCKS:
+            if max_likes_tweet and not USE_TWITTER_MOCKS and random.randint(1, 3) == 1:
                 await asyncio.sleep(random.randint(25, 35))
                 await favorite_tweet(max_likes_tweet['tweet_id'])
 
