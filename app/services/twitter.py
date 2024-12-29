@@ -1,22 +1,94 @@
 from datetime import datetime
 from twikit import Client
 from app.config import get_twitter_credentials
+import logging
+import asyncio
+from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 class TwitterClient:
     def __init__(self):
         self.client = Client('en-US')
         self.client.load_cookies('cookies.json')
         self.credentials = get_twitter_credentials()
-        print(f'🙍‍♂️ Username: {self.credentials["username"]}')
+        self.is_authenticated = False
+        self.auth_retries = 0
+        self.max_retries = 3
+        self.retry_delay = 30 # seconds
+        logger.info(f'🙍‍♂️ Username: {self.credentials["username"]}')
+
+    async def ensure_authenticated(self):
+        if self.is_authenticated:
+            return True
+            
+        while self.auth_retries < self.max_retries:
+            try:
+                await self.authenticate()
+                return True
+            except Exception as e:
+                self.auth_retries += 1
+                logger.error(f'Authentication attempt {self.auth_retries} failed: {str(e)}')
+                
+                if self.auth_retries < self.max_retries:
+                    delay = self.retry_delay * (2 ** (self.auth_retries - 1))  # Exponential backoff
+                    logger.info(f'Waiting {delay} seconds before retry...')
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error('Max authentication retries reached')
+                    raise
+        
+        return False
 
     async def authenticate(self):
-        print(f'{datetime.now()} - Logging in...')
-        await self.client.login(
-            auth_info_1=self.credentials['username'],
-            auth_info_2=self.credentials['email'],
-            password=self.credentials['password']
-        )
-        self.client.save_cookies('cookies.json')
+        logger.info(f'🔑 Authenticating as {self.credentials["username"]}...')
+        try:
+            # First try to verify if existing cookies are valid
+            if await self._verify_existing_session():
+                logger.info('✅ Using existing session')
+                self.is_authenticated = True
+                return
+
+            # If not, perform full authentication
+            await self._perform_full_authentication()
+            
+        except Exception as e:
+            self.is_authenticated = False
+            logger.error(f'❌ Authentication failed: {str(e)}')
+            raise
+
+    async def _verify_existing_session(self) -> bool:
+        """Verify if existing cookies are valid"""
+        try:
+            # Try a simple API call to verify session
+            await self.client.get_timeline(count=1)
+            return True
+        except Exception:
+            return False
+
+    async def _perform_full_authentication(self):
+        """Perform full authentication process"""
+        try:
+            # Clear existing cookies
+            self.client = Client('en-US')
+            
+            # Perform login
+            await self.client.login(
+                auth_info_1=self.credentials['username'],
+                auth_info_2=self.credentials['email'],
+                password=self.credentials['password']
+            )
+            
+            # Save new cookies
+            self.client.save_cookies('cookies.json')
+            self.is_authenticated = True
+            self.auth_retries = 0  # Reset retry counter on success
+            logger.info('✅ Authentication successful')
+            
+        except Exception as e:
+            self.is_authenticated = False
+            logger.error(f'❌ Full authentication failed: {str(e)}')
+            raise
 
     @staticmethod
     def get_photo_urls(media_list):

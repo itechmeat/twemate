@@ -1,15 +1,29 @@
 -- Drop function if it exists
 -- DROP FUNCTION IF EXISTS upsert_tweets(jsonb);
 
-CREATE OR REPLACE FUNCTION upsert_tweets(tweets jsonb)
+CREATE OR REPLACE FUNCTION upsert_tweets(tweets jsonb[])
 RETURNS TABLE (
-    tweet_id BIGINT,
-    is_new BOOLEAN
+    tweet_id text,
+    is_new boolean
 ) AS $$
-DECLARE
-    inserted_rows bigint;
 BEGIN
-    WITH ins AS (
+    RETURN QUERY
+    WITH input_tweets AS (
+        SELECT * FROM jsonb_to_recordset(array_to_json(tweets)::jsonb) AS t(
+            tweet_id text,
+            tweet_user_name text,
+            tweet_user_nick text,
+            tweet_text text,
+            tweet_full_text text,
+            tweet_created_at_datetime timestamp,
+            tweet_retweet_count integer,
+            tweet_likes integer,
+            tweet_photo_urls text[],
+            tweet_lang text,
+            tweet_view_count integer
+        )
+    ),
+    upserted AS (
         INSERT INTO tweets (
             tweet_id,
             tweet_user_name,
@@ -25,35 +39,27 @@ BEGIN
             first_seen_at
         )
         SELECT 
-            (value->>'tweet_id')::BIGINT,
-            value->>'tweet_user_name',
-            value->>'tweet_user_nick',
-            value->>'tweet_text',
-            value->>'tweet_full_text',
-            (value->>'tweet_created_at_datetime')::TIMESTAMP WITH TIME ZONE,
-            (value->>'tweet_retweet_count')::INTEGER,
-            (value->>'tweet_likes')::INTEGER,
-            (value->>'tweet_photo_urls')::TEXT[],
-            value->>'tweet_lang',
-            (value->>'tweet_view_count')::INTEGER,
+            t.tweet_id,
+            t.tweet_user_name,
+            t.tweet_user_nick,
+            t.tweet_text,
+            t.tweet_full_text,
+            t.tweet_created_at_datetime,
+            t.tweet_retweet_count,
+            t.tweet_likes,
+            t.tweet_photo_urls,
+            t.tweet_lang,
+            t.tweet_view_count,
             CURRENT_TIMESTAMP
-        FROM jsonb_array_elements(tweets)
-        ON CONFLICT (tweet_id) DO UPDATE
-        SET
+        FROM input_tweets t
+        ON CONFLICT (tweet_id) DO UPDATE 
+        SET 
             tweet_retweet_count = EXCLUDED.tweet_retweet_count,
             tweet_likes = EXCLUDED.tweet_likes,
-            tweet_view_count = EXCLUDED.tweet_view_count
-        WHERE tweets.tweet_id = EXCLUDED.tweet_id
-        RETURNING tweets.tweet_id
+            tweet_view_count = EXCLUDED.tweet_view_count,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING tweet_id, (xmax = 0) as is_new
     )
-    SELECT 
-        i.tweet_id,
-        EXISTS (
-            SELECT 1 
-            FROM tweets t 
-            WHERE t.tweet_id = i.tweet_id 
-            AND t.first_seen_at >= CURRENT_TIMESTAMP - interval '1 minute'
-        ) as is_new
-    FROM ins i;
+    SELECT tweet_id, is_new FROM upserted;
 END;
 $$ LANGUAGE plpgsql; 

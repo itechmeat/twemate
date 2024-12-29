@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 
 async def handle_twitter_request(request_func):
     try:
+        await twitter_client.ensure_authenticated()
         return await request_func()
     except TooManyRequests:
         raise HTTPException(status_code=429, detail="Rate limit reached")
     except Unauthorized:
-        await twitter_client.authenticate()
+        # Try to re-authenticate once
         try:
+            await twitter_client.authenticate()
             return await request_func()
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
