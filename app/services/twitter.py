@@ -4,8 +4,12 @@ from app.config import get_twitter_credentials
 import logging
 import asyncio
 from typing import Optional
+import os
+import json
 
 logger = logging.getLogger(__name__)
+
+USE_TWITTER_MOCKS = os.getenv("USE_TWITTER_MOCKS", "false").lower() == "true"
 
 class TwitterClient:
     def __init__(self):
@@ -19,6 +23,11 @@ class TwitterClient:
         logger.info(f'🙍‍♂️ Username: {self.credentials["username"]}')
 
     async def ensure_authenticated(self):
+        if USE_TWITTER_MOCKS:
+            logger.info("Mock mode is enabled; skipping authentication.")
+            self.is_authenticated = True
+            return True
+
         if self.is_authenticated:
             return True
             
@@ -103,15 +112,31 @@ class TwitterClient:
         ]
 
     def process_tweet(self, tweet, tweet_count):
-        photo_urls = self.get_photo_urls(tweet.media if hasattr(tweet, 'media') else [])
-        return {
-            'tweet_id': tweet.id,
-            'tweet_user_name': tweet.user.name,
-            'tweet_user_nick': tweet.user.screen_name,
-            'text': tweet.text,
-            'created_at': str(tweet.created_at),
-            'retweets': tweet.retweet_count,
-            'likes': tweet.favorite_count,
-            'photo_urls': photo_urls,
-            'tweet_lang': tweet.lang,
-        } 
+        if USE_TWITTER_MOCKS:
+            photo_urls = self.get_photo_urls(tweet['media'] if 'media' in tweet else [])
+            result = {
+                'tweet_id': tweet['id'],
+                'tweet_user_name': tweet['user']['name'],
+                'tweet_user_nick': tweet['user']['screen_name'],
+                'text': tweet['text'],
+                'created_at': str(tweet['created_at']),
+                'retweets': tweet['retweet_count'],
+                'likes': tweet['favorite_count'],
+                'photo_urls': photo_urls,
+                'tweet_lang': tweet['lang'],
+            }
+        else:
+            photo_urls = self.get_photo_urls(tweet.media if hasattr(tweet, 'media') else [])
+            result = {
+                'tweet_id': tweet.id,
+                'tweet_user_name': tweet.user.name,
+                'tweet_user_nick': tweet.user.screen_name,
+                'text': tweet.text,
+                'created_at': str(tweet.created_at),
+                'retweets': tweet.retweet_count,
+                'likes': tweet.favorite_count,
+                'photo_urls': photo_urls,
+                'tweet_lang': tweet.lang,
+            }
+        
+        return result 

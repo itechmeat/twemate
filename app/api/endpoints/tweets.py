@@ -14,10 +14,14 @@ from app.services.supabase import supabase
 import logging
 import random
 import asyncio
+import os
+import json
 
 router = APIRouter()
 twitter_client = TwitterClient()
 logger = logging.getLogger(__name__)
+
+USE_TWITTER_MOCKS = os.getenv("USE_TWITTER_MOCKS", "false").lower() == "true"
 
 async def handle_twitter_request(request_func):
     try:
@@ -59,7 +63,7 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
         logger.info(f"Upserting {len(db_tweets)} tweets...")
         response = supabase.rpc(
             'upsert_tweets',
-            {'tweets': db_tweets}
+            {'input_tweets': db_tweets}
         ).execute()
         
         if not response.data:
@@ -96,6 +100,21 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
         logger.error(f"Error in batch processing tweets: {str(e)}")
         return None
 
+async def fetch_tweets_from_file():
+    with open('app/mocks/tweets.json') as f:
+        return json.load(f)
+
+async def get_tweets(params: SearchParams | TimelineParams):
+    if USE_TWITTER_MOCKS:
+        logger.info('Fetching tweets from mock file...')
+        return await fetch_tweets_from_file()
+    else:
+        logger.info('Fetching tweets from Twitter API...')
+        if isinstance(params, SearchParams):
+            return await twitter_client.client.search_tweet(params.query, product='Latest')
+        else:
+            return await twitter_client.client.get_timeline()
+
 @router.post("/search_tweets", response_model=List[TweetData])
 async def search_tweets(params: SearchParams):
     tweet_count = 0
@@ -104,18 +123,17 @@ async def search_tweets(params: SearchParams):
     batch_size = 100
 
     while tweet_count < params.minimum_tweets:
-        async def get_tweets():
+        async def get_tweets_func():
             nonlocal tweets
             if tweets is None:
-                logger.info(f'Getting tweets...')
-                return await twitter_client.client.search_tweet(params.query, product='Latest')
+                return await get_tweets(params)
             else:
                 wait_time = randint(5, 10)
                 logger.info(f'Getting next tweets after {wait_time} seconds ...')
                 time.sleep(wait_time)
                 return await tweets.next()
 
-        tweets = await handle_twitter_request(get_tweets)
+        tweets = await handle_twitter_request(get_tweets_func)
         if not tweets:
             break
 
@@ -141,8 +159,9 @@ async def search_tweets(params: SearchParams):
 @router.post("/timeline", response_model=List[TweetData])
 async def get_user_timeline(params: TimelineParams):
     logger.info("Fetching user timeline...")
+    
     async def get_timeline():
-        return await twitter_client.client.get_timeline(count=params.minimum_tweets)
+        return await get_tweets(params)
 
     tweets = await handle_twitter_request(get_timeline)
     results = []
@@ -160,8 +179,9 @@ async def get_user_timeline(params: TimelineParams):
 @router.post("/latest_timeline", response_model=List[TweetData])
 async def get_latest_user_timeline(params: TimelineParams):
     logger.info("Fetching latest timeline...")
+    
     async def get_latest_timeline():
-        return await twitter_client.client.get_latest_timeline(count=params.minimum_tweets)
+        return await get_tweets(params)
 
     tweets = await handle_twitter_request(get_latest_timeline)
     results = []
@@ -178,6 +198,10 @@ async def get_latest_user_timeline(params: TimelineParams):
 
 @router.post("/favorite_tweet/{tweet_id}")
 async def favorite_tweet(tweet_id: int):
+    if USE_TWITTER_MOCKS:
+        logger.warning("Favorite tweet functionality is disabled in mock mode.")
+        raise HTTPException(status_code=403, detail="Favorite tweet functionality is disabled in mock mode.")
+    
     logger.info(f"🎯 Attempting to favorite tweet {tweet_id}")
     
     async def do_favorite():
