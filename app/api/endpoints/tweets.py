@@ -254,6 +254,12 @@ async def favorite_tweet(tweet_id: int):
     try:
         result = await handle_twitter_request(do_favorite)
         logger.info(f"💜 Successfully favorited tweet {tweet_id}")
+        
+        supabase.table('tweets') \
+            .update({"is_tweet_liked": True}) \
+            .eq('tweet_id', tweet_id) \
+            .execute()
+        
         return {"status": "success", "tweet_id": tweet_id}
     except Exception as e:
         logger.error(f"Failed to favorite tweet {tweet_id}: {str(e)}")
