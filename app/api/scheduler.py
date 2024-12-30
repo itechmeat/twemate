@@ -4,15 +4,20 @@ import random
 from app.models.schemas import TimelineParams
 from loguru import logger
 from app.api.common import twitter_client
+from pydantic import BaseModel, Field
+
+class SchedulerStartParams(BaseModel):
+    minimum_tweets: int = Field(default=10, ge=1, description="Minimum number of tweets to fetch in each request")
 
 class TweetScheduler:
     def __init__(self):
         self.task = None
         self.is_running = False
+        self.minimum_tweets = 10
 
     async def scheduled_tweets_fetch(self):
         self.is_running = True
-        logger.info("🏁  Starting scheduled tweets fetch...")
+        logger.info(f"🏁  Starting scheduled tweets fetch with minimum_tweets={self.minimum_tweets}...")
         
         while self.is_running:
             try:
@@ -24,7 +29,8 @@ class TweetScheduler:
                     await asyncio.sleep(32)  # Wait 32 seconds before retrying
                     continue
 
-                params = TimelineParams(minimum_tweets=10)
+                params = TimelineParams(minimum_tweets=self.minimum_tweets)
+                logger.debug(f"Created TimelineParams with minimum_tweets={params.minimum_tweets}")
                 
                 # get tweets from following users
                 try:
@@ -59,10 +65,12 @@ class TweetScheduler:
             logger.info(f"⏳  Waiting {main_delay} seconds before next cycle...")
             await asyncio.sleep(main_delay)
 
-    def start(self):
+    def start(self, minimum_tweets: int = 10):
         if not self.is_running:
+            logger.info(f"Setting minimum_tweets to {minimum_tweets}")
+            self.minimum_tweets = minimum_tweets
             self.task = asyncio.create_task(self.scheduled_tweets_fetch())
-            logger.info("🏁  Tweet scheduler started")
+            logger.info(f"🏁  Tweet scheduler started with minimum_tweets={minimum_tweets}")
             return True
         return False
 
