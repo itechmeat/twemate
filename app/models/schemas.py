@@ -1,9 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 
 class SearchParams(BaseModel):
     query: str
-    minimum_tweets: int = 10
+    minimum_tweets: int = 100
+    save_to_db: bool = Field(default=False)
 
 class TimelineParams(BaseModel):
     minimum_tweets: int = 10

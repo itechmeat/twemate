@@ -49,7 +49,7 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
         return None
         
     try:
-        logger.info(f"Processing {len(tweets_data)} tweets...")
+        logger.info(f"🏋️‍♀️  Processing {len(tweets_data)} tweets...")
         
         # Preparing data
         db_tweets = []
@@ -99,7 +99,7 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
             supabase.table('tweets') \
                 .insert(tweets_to_insert) \
                 .execute()
-            logger.info(f"Inserted {len(tweets_to_insert)} new tweets")
+            logger.info(f"💾  Inserted {len(tweets_to_insert)} new tweets")
             
             max_likes_tweet = max(tweets_to_insert, key=lambda tweet: tweet['tweet_likes'], default=None)
             if max_likes_tweet and not USE_TWITTER_MOCKS and random.randint(1, 3) == 1:
@@ -130,15 +130,15 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
                     .update(update_data[tweet_id]) \
                     .eq('tweet_id', tweet_id) \
                     .execute()
-            logger.info(f"Updated {len(tweets_to_update)} existing tweets")
+            logger.info(f"💾  Updated {len(tweets_to_update)} existing tweets")
                 
-        logger.info(f"Successfully processed all {len(tweets_data)} tweets")
+        logger.info(f"🎉  Successfully processed all {len(tweets_data)} tweets")
         return True
         
     except ExecutionStopError:
         raise
     except Exception as e:
-        logger.error(f"Error in batch processing tweets: {str(e)}")
+        logger.error(f"🚨 Error in batch processing tweets: {str(e)}")
         return None
 
 async def fetch_tweets_from_file():
@@ -147,10 +147,10 @@ async def fetch_tweets_from_file():
 
 async def get_tweets(params: SearchParams | TimelineParams):
     if USE_TWITTER_MOCKS:
-        logger.info('Fetching tweets from mock file...')
+        logger.info('🔎  Fetching tweets from mock file...')
         return await fetch_tweets_from_file()
     else:
-        logger.info('Fetching tweets from Twitter API...')
+        logger.info('🔎  Fetching tweets from Twitter API...')
         if isinstance(params, SearchParams):
             return await twitter_client.client.search_tweet(params.query, product='Latest')
         elif isinstance(params, TimelineParams):
@@ -174,7 +174,7 @@ async def search_tweets(params: SearchParams):
                 return await get_tweets(params)
             else:
                 wait_time = randint(5, 10)
-                logger.info(f'Getting next tweets after {wait_time} seconds ...')
+                logger.info(f'⏳  Getting next tweets after {wait_time} seconds ...')
                 time.sleep(wait_time)
                 return await tweets.next()
 
@@ -187,23 +187,25 @@ async def search_tweets(params: SearchParams):
             tweet_count += 1
             tweet_data = twitter_client.process_tweet(tweet, tweet_count)
             results.append(tweet_data)
-            batch_tweets.append(TweetData(**tweet_data))
             
-            if len(batch_tweets) >= batch_size or tweet_count >= params.minimum_tweets:
+            if params.save_to_db:
+                batch_tweets.append(TweetData(**tweet_data))
+            
+            if params.save_to_db and (len(batch_tweets) >= batch_size or tweet_count >= params.minimum_tweets):
                 await upsert_tweets_batch(batch_tweets)
                 batch_tweets = []
                 
             if tweet_count >= params.minimum_tweets:
                 break
         
-        if batch_tweets:
+        if params.save_to_db and batch_tweets:
             await upsert_tweets_batch(batch_tweets)
 
     return results
 
 @router.post("/timeline", response_model=List[TweetData])
 async def get_user_timeline(params: TimelineParams):
-    logger.info("Fetching user timeline (For You)...")
+    logger.info("🔎  Fetching user timeline (For You)...")
     
     async def get_timeline_tweets():
         if USE_TWITTER_MOCKS:
@@ -220,12 +222,12 @@ async def get_user_timeline(params: TimelineParams):
         batch_tweets.append(TweetData(**tweet_data))
 
     if await upsert_tweets_batch(batch_tweets):
-        logger.info(f"🐵 Successfully processed {len(results)} tweets from For You timeline")
+        logger.info(f"🎉  Successfully processed {len(results)} tweets from For You timeline")
     return results
 
 @router.post("/latest_timeline", response_model=List[TweetData])
 async def get_latest_user_timeline(params: TimelineParams):
-    logger.info("Fetching latest timeline (Following)...")
+    logger.info("🔎  Fetching latest timeline (Following)...")
     
     async def get_latest_timeline_tweets():
         if USE_TWITTER_MOCKS:
@@ -242,23 +244,23 @@ async def get_latest_user_timeline(params: TimelineParams):
         batch_tweets.append(TweetData(**tweet_data))
 
     if await upsert_tweets_batch(batch_tweets):
-        logger.info(f"🐶 Successfully processed {len(results)} tweets from Following timeline")
+        logger.info(f"🎉  Successfully processed {len(results)} tweets from Following timeline")
     return results
 
 @router.post("/favorite_tweet/{tweet_id}")
 async def favorite_tweet(tweet_id: int):
     if USE_TWITTER_MOCKS:
-        logger.warning("Favorite tweet functionality is disabled in mock mode.")
+        logger.warning("🚧 Favorite tweet functionality is disabled in mock mode.")
         raise HTTPException(status_code=403, detail="Favorite tweet functionality is disabled in mock mode.")
     
-    logger.info(f"🎯 Attempting to favorite tweet {tweet_id}")
+    logger.info(f"🎯  Attempting to favorite tweet {tweet_id}")
     
     async def do_favorite():
         return await twitter_client.client.favorite_tweet(tweet_id)
     
     try:
         result = await handle_twitter_request(do_favorite)
-        logger.info(f"💜 Successfully favorited tweet {tweet_id}")
+        logger.info(f"💜  Successfully favorited tweet {tweet_id}")
         
         supabase.table('tweets') \
             .update({"is_tweet_liked": True}) \

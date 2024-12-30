@@ -12,7 +12,7 @@ class TweetScheduler:
 
     async def scheduled_tweets_fetch(self):
         self.is_running = True
-        logger.info("Starting scheduled tweets fetch...")
+        logger.info("🏁  Starting scheduled tweets fetch...")
         
         while self.is_running:
             try:
@@ -30,7 +30,7 @@ class TweetScheduler:
                 try:
                     from app.api.endpoints.tweets import get_latest_user_timeline, get_user_timeline
                     latest_tweets = await get_latest_user_timeline(params)
-                    logger.info(f"🎉 Scheduler: fetched {len(latest_tweets)} latest tweets")
+                    logger.info(f"🎉  Scheduler: fetched {len(latest_tweets)} latest tweets")
                 except Exception as e:
                     logger.error(f"Failed to fetch latest timeline: {str(e)}")
                     await asyncio.sleep(60)
@@ -38,13 +38,13 @@ class TweetScheduler:
                 
                 # Random delay between requests (5-7 minutes)
                 delay_between_requests = random.randint(300, 420)
-                logger.info(f"Waiting {delay_between_requests} seconds before next request...")
+                logger.info(f"⏳  Waiting {delay_between_requests} seconds before next request...")
                 await asyncio.sleep(delay_between_requests)
                 
                 # get recommended tweets
                 try:
                     user_tweets = await get_user_timeline(params)
-                    logger.info(f"🎉 Scheduler: fetched {len(user_tweets)} user timeline tweets")
+                    logger.info(f"🎉  Scheduler: fetched {len(user_tweets)} user timeline tweets")
                 except Exception as e:
                     logger.error(f"Failed to fetch user timeline: {str(e)}")
                     await asyncio.sleep(60)
@@ -56,13 +56,13 @@ class TweetScheduler:
                 continue
             
             main_delay = random.randint(1680, 1920)  # 1800 ± 120 seconds
-            logger.info(f"Waiting {main_delay} seconds before next cycle...")
+            logger.info(f"⏳  Waiting {main_delay} seconds before next cycle...")
             await asyncio.sleep(main_delay)
 
     def start(self):
         if not self.is_running:
             self.task = asyncio.create_task(self.scheduled_tweets_fetch())
-            logger.info("Tweet scheduler started")
+            logger.info("🏁  Tweet scheduler started")
             return True
         return False
 
@@ -71,7 +71,7 @@ class TweetScheduler:
             self.is_running = False
             if self.task:
                 self.task.cancel()
-            logger.info("Tweet scheduler stopped")
+            logger.info("🚧  Tweet scheduler stopped")
             return True
         return False
 

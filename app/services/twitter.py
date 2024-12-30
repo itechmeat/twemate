@@ -21,11 +21,11 @@ class TwitterClient:
         self.auth_retries = 0
         self.max_retries = 3
         self.retry_delay = 30 # seconds
-        logger.info(f'🙍‍♂️ Username: {self.credentials["username"]}')
+        logger.info(f'🙍‍♂️  Username: {self.credentials["username"]}')
 
     async def ensure_authenticated(self):
         if USE_TWITTER_MOCKS:
-            logger.info("Mock mode is enabled; skipping authentication.")
+            logger.info("📙  Mock mode is enabled; skipping authentication.")
             self.is_authenticated = True
             return True
 
@@ -42,7 +42,7 @@ class TwitterClient:
                 
                 if self.auth_retries < self.max_retries:
                     delay = self.retry_delay * (2 ** (self.auth_retries - 1))  # Exponential backoff
-                    logger.info(f'Waiting {delay} seconds before retry...')
+                    logger.info(f'⏳  Waiting {delay} seconds before retry...')
                     await asyncio.sleep(delay)
                 else:
                     logger.error('Max authentication retries reached')
@@ -51,11 +51,11 @@ class TwitterClient:
         return False
 
     async def authenticate(self):
-        logger.info(f'🔑 Authenticating as {self.credentials["username"]}...')
+        logger.info(f'🔑  Authenticating as {self.credentials["username"]}...')
         try:
             # First try to verify if existing cookies are valid
             if await self._verify_existing_session():
-                logger.info('✅ Using existing session')
+                logger.info('✅  Using existing session')
                 self.is_authenticated = True
                 return
 
@@ -66,7 +66,7 @@ class TwitterClient:
             raise
         except Exception as e:
             self.is_authenticated = False
-            logger.error(f'❌ Authentication failed: {str(e)}')
+            logger.error(f'❌  Authentication failed: {str(e)}')
             raise
 
     async def _verify_existing_session(self) -> bool:
@@ -95,7 +95,7 @@ class TwitterClient:
         self.client.save_cookies('cookies.json')
         self.is_authenticated = True
         self.auth_retries = 0  # Reset retry counter on success
-        logger.info('✅ Authentication successful')
+        logger.info('✅  Authentication successful')
 
     @staticmethod
     def get_photo_urls(media_list):
