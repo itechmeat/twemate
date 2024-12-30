@@ -9,7 +9,7 @@ from twikit import (
     ServerError, AccountLocked
 )
 from app.models.schemas import SearchParams, TimelineParams, TweetData
-from app.services.twitter import TwitterClient
+from app.api.common import twitter_client
 from app.services.supabase import supabase
 import logging
 import random
@@ -17,9 +17,9 @@ import asyncio
 import os
 import json
 from loguru import logger
+from app.api.scheduler import tweet_scheduler
 
 router = APIRouter()
-twitter_client = TwitterClient()
 ExecutionStopError = (asyncio.CancelledError, KeyboardInterrupt, SystemError)
 
 USE_TWITTER_MOCKS = os.getenv("USE_TWITTER_MOCKS", "false").lower() == "true"
