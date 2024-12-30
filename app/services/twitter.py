@@ -6,10 +6,11 @@ import asyncio
 from typing import Optional
 import os
 import json
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 USE_TWITTER_MOCKS = os.getenv("USE_TWITTER_MOCKS", "false").lower() == "true"
+
+ExecutionStopError = (asyncio.CancelledError, KeyboardInterrupt, SystemError)
 
 class TwitterClient:
     def __init__(self):
@@ -61,6 +62,8 @@ class TwitterClient:
             # If not, perform full authentication
             await self._perform_full_authentication()
             
+        except ExecutionStopError:
+            raise
         except Exception as e:
             self.is_authenticated = False
             logger.error(f'❌ Authentication failed: {str(e)}')
@@ -72,32 +75,27 @@ class TwitterClient:
             # Try a simple API call to verify session
             await self.client.get_timeline(count=1)
             return True
+        except ExecutionStopError:
+            raise
         except Exception:
             return False
 
     async def _perform_full_authentication(self):
         """Perform full authentication process"""
-        try:
-            # Clear existing cookies
-            self.client = Client('en-US')
-            
-            # Perform login
-            await self.client.login(
-                auth_info_1=self.credentials['username'],
-                auth_info_2=self.credentials['email'],
-                password=self.credentials['password']
-            )
-            
-            # Save new cookies
-            self.client.save_cookies('cookies.json')
-            self.is_authenticated = True
-            self.auth_retries = 0  # Reset retry counter on success
-            logger.info('✅ Authentication successful')
-            
-        except Exception as e:
-            self.is_authenticated = False
-            logger.error(f'❌ Full authentication failed: {str(e)}')
-            raise
+        self.client = Client('en-US')
+        
+        # Perform login
+        await self.client.login(
+            auth_info_1=self.credentials['username'],
+            auth_info_2=self.credentials['email'],
+            password=self.credentials['password']
+        )
+        
+        # Save new cookies
+        self.client.save_cookies('cookies.json')
+        self.is_authenticated = True
+        self.auth_retries = 0  # Reset retry counter on success
+        logger.info('✅ Authentication successful')
 
     @staticmethod
     def get_photo_urls(media_list):

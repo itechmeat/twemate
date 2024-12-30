@@ -16,10 +16,11 @@ import random
 import asyncio
 import os
 import json
+from loguru import logger
 
 router = APIRouter()
 twitter_client = TwitterClient()
-logger = logging.getLogger(__name__)
+ExecutionStopError = (asyncio.CancelledError, KeyboardInterrupt, SystemError)
 
 USE_TWITTER_MOCKS = os.getenv("USE_TWITTER_MOCKS", "false").lower() == "true"
 
@@ -27,6 +28,8 @@ async def handle_twitter_request(request_func):
     try:
         await twitter_client.ensure_authenticated()
         return await request_func()
+    except ExecutionStopError:
+        raise
     except TooManyRequests:
         raise HTTPException(status_code=429, detail="Rate limit reached")
     except Unauthorized:
@@ -132,6 +135,8 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
         logger.info(f"Successfully processed all {len(tweets_data)} tweets")
         return True
         
+    except ExecutionStopError:
+        raise
     except Exception as e:
         logger.error(f"Error in batch processing tweets: {str(e)}")
         return None
@@ -261,6 +266,8 @@ async def favorite_tweet(tweet_id: int):
             .execute()
         
         return {"status": "success", "tweet_id": tweet_id}
+    except ExecutionStopError:
+        raise
     except Exception as e:
         logger.error(f"Failed to favorite tweet {tweet_id}: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))

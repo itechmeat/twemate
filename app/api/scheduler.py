@@ -3,8 +3,7 @@ import logging
 import random
 from app.api.endpoints.tweets import get_user_timeline, get_latest_user_timeline, twitter_client
 from app.models.schemas import TimelineParams
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 async def scheduled_tweets_fetch():
     logger.info("Starting scheduled tweets fetch...")
