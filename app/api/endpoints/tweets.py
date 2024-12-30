@@ -105,10 +105,10 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
 
         # Updating existing tweets in one batch
         if tweets_to_update:
-            update_data = []
+            update_data = {}
             for tweet in tweets_to_update:
                 tweet_id = tweet['tweet_id']
-                update_data.append({
+                update_data[tweet_id] = {
                     "tweet_user_name": tweet['tweet_user_name'],
                     "tweet_user_nick": tweet['tweet_user_nick'],
                     "tweet_text": tweet['tweet_text'],
@@ -120,11 +120,13 @@ async def upsert_tweets_batch(tweets_data: List[TweetData]):
                     "tweet_lang": tweet['tweet_lang'],
                     "tweet_view_count": tweet['tweet_view_count'],
                     "updated_at": current_time
-                })
-            supabase.table('tweets') \
-                .update(update_data) \
-                .in_('tweet_id', [tweet['tweet_id'] for tweet in tweets_to_update]) \
-                .execute()
+                }
+            for tweet in tweets_to_update:
+                tweet_id = tweet['tweet_id']
+                supabase.table('tweets') \
+                    .update(update_data[tweet_id]) \
+                    .eq('tweet_id', tweet_id) \
+                    .execute()
             logger.info(f"Updated {len(tweets_to_update)} existing tweets")
                 
         logger.info(f"Successfully processed all {len(tweets_data)} tweets")
