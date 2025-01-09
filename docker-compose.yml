@@ -12,6 +12,7 @@ services:
     volumes:
       - ./cookies.json:/app/cookies.json
       - ./app:/app/app
+      - ./app/mocks:/app/mocks
     restart: unless-stopped
     networks:
       - n8n-network
