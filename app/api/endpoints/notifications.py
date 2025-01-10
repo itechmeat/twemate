@@ -1,12 +1,13 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.api.common import twitter_client
 from app.api.utils import handle_twitter_request
 from loguru import logger
 import os
 from enum import Enum
+from app.models.schemas import SearchParams
 
 router = APIRouter()
 
@@ -25,6 +26,46 @@ class NotificationData(BaseModel):
     icon: Optional[dict]
     from_user: Optional[dict]
     tweet: Optional[dict]
+
+class NotificationMetrics(BaseModel):
+    replies: str
+    retweets: str
+    likes: str
+
+class NotificationMedia(BaseModel):
+    has_images: bool
+    has_video: bool
+
+class NotificationAuthor(BaseModel):
+    name: str
+    username: str
+    avatar: str
+
+class NotificationPayload(BaseModel):
+    text: str
+    author: NotificationAuthor
+    metrics: NotificationMetrics
+    media: NotificationMedia
+    is_reply: bool
+    lang: str
+    created_at: datetime
+    id: str
+    url: str
+    timestamp: datetime
+    test_mode: bool = Field(default=False)
+    reprocessed: bool = Field(default=False)
+
+class TweetDetails(BaseModel):
+    id: str
+    text: str
+    display_text: str
+    created_at: str
+    lang: str
+    retweet_count: int
+    favorite_count: int
+    author_name: Optional[str] = None
+    author_username: Optional[str] = None
+    in_reply_to: Optional[str] = None
 
 @router.get("/", response_model=List[NotificationData])
 async def get_notifications(
@@ -78,9 +119,9 @@ async def get_notifications(
                     if hasattr(tweet, '_data'):
                         data = tweet._data
                         logger.info(f"- Tweet reply info: "
-                                   f"in_reply_to_status_id={data.get('in_reply_to_status_id')}, "
-                                   f"in_reply_to_user_id={data.get('in_reply_to_user_id')}, "
-                                   f"in_reply_to_screen_name={data.get('in_reply_to_screen_name')}")
+                            f"in_reply_to_status_id={data.get('in_reply_to_status_id')}, "
+                            f"in_reply_to_user_id={data.get('in_reply_to_user_id')}, "
+                            f"in_reply_to_screen_name={data.get('in_reply_to_screen_name')}")
                 
                 # Log user information
                 if hasattr(notif, 'from_user') and notif.from_user:
@@ -124,9 +165,9 @@ async def get_notifications(
                         if hasattr(tweet, '_data'):
                             data = tweet._data
                             logger.info(f"- Tweet reply info: "
-                                       f"in_reply_to_status_id={data.get('in_reply_to_status_id')}, "
-                                       f"in_reply_to_user_id={data.get('in_reply_to_user_id')}, "
-                                       f"in_reply_to_screen_name={data.get('in_reply_to_screen_name')}")
+                                f"in_reply_to_status_id={data.get('in_reply_to_status_id')}, "
+                                f"in_reply_to_user_id={data.get('in_reply_to_user_id')}, "
+                                f"in_reply_to_screen_name={data.get('in_reply_to_screen_name')}")
                     
                     # Log user information
                     if hasattr(notif, 'from_user') and notif.from_user:
@@ -229,3 +270,65 @@ async def get_mention_notifications(
         cursor=cursor,
         include_mentions=False
     ) 
+
+@router.post("/", response_model=dict)
+async def process_notification(
+    notification: NotificationPayload = Body(...)
+):
+    """
+    Process incoming notification about a tweet
+    """
+    try:
+        logger.info(f"📨 Received notification for tweet ID: {notification.id}")
+        
+        async def get_tweet():
+            return await twitter_client.client.get_tweet_by_id(notification.id)
+            
+        if USE_TWITTER_MOCKS:
+            logger.warning("🚧 Twitter API calls are disabled in mock mode")
+            return {
+                "status": "success",
+                "message": "Mock mode - skipping Twitter API call",
+                "tweet_id": notification.id
+            }
+            
+        tweet = await handle_twitter_request(get_tweet)
+        if tweet:
+            # Get display text without @mention
+            display_text = tweet.text
+            if tweet.in_reply_to:
+                # If this is a reply, remove @mention from the beginning of the text
+                display_text = ' '.join(word for word in tweet.text.split() 
+                    if not word.startswith('@'))
+            
+            tweet_details = TweetDetails(
+                id=tweet.id,
+                text=tweet.text,  # Original text
+                display_text=display_text.strip(),  # Text without @mention
+                created_at=tweet.created_at,
+                lang=tweet.lang,
+                retweet_count=tweet.retweet_count,
+                favorite_count=tweet.favorite_count,
+                author_name=tweet.user.name if tweet.user else None,
+                author_username=tweet.user.screen_name if tweet.user else None,
+                in_reply_to=tweet.in_reply_to
+            )
+            
+            return {
+                "status": "success",
+                "message": "Notification processed successfully",
+                "tweet_details": tweet_details.model_dump()
+            }
+        
+        return {
+            "status": "success",
+            "message": "Tweet not found",
+            "tweet_id": notification.id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process notification: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to process notification: {str(e)}"
+        ) 
