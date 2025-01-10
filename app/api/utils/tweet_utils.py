@@ -10,9 +10,18 @@ def process_tweet_details(tweet) -> TweetDetails:
         # Get display text without @mention if it's a reply
         text = getattr(tweet, 'text', '')
         display_text = text
-        if getattr(tweet, 'in_reply_to_status_id', None):
-            display_text = ' '.join(word for word in text.split() 
-                if not word.startswith('@'))
+        
+        # Check both fields to determine if it's a reply
+        is_reply = (
+            getattr(tweet, 'in_reply_to_status_id', None) or 
+            getattr(tweet, 'in_reply_to', None)
+        )
+        
+        if is_reply:
+            # If it's a reply, remove all initial @mentions
+            words = text.split()
+            non_mention_words = [w for w in words if not w.startswith('@')]
+            display_text = ' '.join(non_mention_words) if non_mention_words else text
             
         # Process author information safely
         user = getattr(tweet, 'user', None)
@@ -50,6 +59,7 @@ def process_tweet_details(tweet) -> TweetDetails:
         in_reply_to_status_id = getattr(tweet, 'in_reply_to_status_id', None)
         in_reply_to_user_id = getattr(tweet, 'in_reply_to_user_id', None)
         in_reply_to_screen_name = getattr(tweet, 'in_reply_to_screen_name', None)
+        in_reply_to = getattr(tweet, 'in_reply_to', None)
         
         return TweetDetails(
             id=tweet_id,
@@ -63,6 +73,7 @@ def process_tweet_details(tweet) -> TweetDetails:
             in_reply_to_status_id=str(in_reply_to_status_id) if in_reply_to_status_id else None,
             in_reply_to_user_id=str(in_reply_to_user_id) if in_reply_to_user_id else None,
             in_reply_to_screen_name=in_reply_to_screen_name,
+            in_reply_to=str(in_reply_to) if in_reply_to else None,
             photo_urls=photo_urls
         )
     except Exception as e:

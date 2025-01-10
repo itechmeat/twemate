@@ -20,6 +20,7 @@ class TweetDetails(BaseModel):
     in_reply_to_status_id: Optional[str] = None
     in_reply_to_user_id: Optional[str] = None
     in_reply_to_screen_name: Optional[str] = None
+    in_reply_to: Optional[str] = None
     photo_urls: List[str] = []
 
 class TweetThread(BaseModel):

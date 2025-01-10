@@ -3,11 +3,12 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
 from app.api.common import twitter_client
-from app.api.utils import handle_twitter_request
+from app.api.utils import handle_twitter_request, process_tweet_details
 from loguru import logger
 import os
 from enum import Enum
 from app.models.schemas import SearchParams
+from app.models.tweet_schemas import TweetDetails
 
 router = APIRouter()
 
@@ -54,18 +55,6 @@ class NotificationPayload(BaseModel):
     timestamp: datetime
     test_mode: bool = Field(default=False)
     reprocessed: bool = Field(default=False)
-
-class TweetDetails(BaseModel):
-    id: str
-    text: str
-    display_text: str
-    created_at: str
-    lang: str
-    retweet_count: int
-    favorite_count: int
-    author_name: Optional[str] = None
-    author_username: Optional[str] = None
-    in_reply_to: Optional[str] = None
 
 @router.get("/", response_model=List[NotificationData])
 async def get_notifications(
@@ -275,9 +264,7 @@ async def get_mention_notifications(
 async def process_notification(
     notification: NotificationPayload = Body(...)
 ):
-    """
-    Process incoming notification about a tweet
-    """
+    """Process incoming notification about a tweet"""
     try:
         logger.info(f"📨 Received notification for tweet ID: {notification.id}")
         
@@ -294,25 +281,7 @@ async def process_notification(
             
         tweet = await handle_twitter_request(get_tweet)
         if tweet:
-            # Get display text without @mention
-            display_text = tweet.text
-            if tweet.in_reply_to:
-                # If this is a reply, remove @mention from the beginning of the text
-                display_text = ' '.join(word for word in tweet.text.split() 
-                    if not word.startswith('@'))
-            
-            tweet_details = TweetDetails(
-                id=tweet.id,
-                text=tweet.text,  # Original text
-                display_text=display_text.strip(),  # Text without @mention
-                created_at=tweet.created_at,
-                lang=tweet.lang,
-                retweet_count=tweet.retweet_count,
-                favorite_count=tweet.favorite_count,
-                author_name=tweet.user.name if tweet.user else None,
-                author_username=tweet.user.screen_name if tweet.user else None,
-                in_reply_to=tweet.in_reply_to
-            )
+            tweet_details = process_tweet_details(tweet)
             
             return {
                 "status": "success",
