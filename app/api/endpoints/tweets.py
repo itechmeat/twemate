@@ -344,8 +344,7 @@ async def create_tweet(request: CreateTweetRequest):
                 
             return await twitter_client.client.create_tweet(
                 text=request.text,
-                in_reply_to_status_id=request.reply_to,
-                auto_populate_reply_metadata=True
+                reply_to=request.reply_to
             )
         else:
             # Regular tweet without reply
