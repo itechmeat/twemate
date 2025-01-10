@@ -26,3 +26,7 @@ class TweetDetails(BaseModel):
 class TweetThread(BaseModel):
     main_tweet: TweetDetails
     replies: List[TweetDetails] 
+
+class CreateTweetRequest(BaseModel):
+    text: str
+    reply_to: Optional[str] = None 

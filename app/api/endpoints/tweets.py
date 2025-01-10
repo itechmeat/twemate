@@ -15,7 +15,7 @@ import json
 from loguru import logger
 from app.api.scheduler import tweet_scheduler
 from pydantic import BaseModel
-from app.models.tweet_schemas import TweetThread, TweetDetails
+from app.models.tweet_schemas import TweetThread, TweetDetails, CreateTweetRequest
 from app.api.utils.tweet_utils import process_tweet_details
 
 router = APIRouter()
@@ -320,4 +320,62 @@ async def get_tweet_replies(
         raise
     except Exception as e:
         logger.error(f"Failed to get replies for tweet {tweet_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/new", response_model=TweetDetails)
+async def create_tweet(request: CreateTweetRequest):
+    """Create a new tweet, optionally as a reply to another tweet"""
+    if USE_TWITTER_MOCKS:
+        logger.warning("🚧 Creating tweets is disabled in mock mode")
+        raise HTTPException(
+            status_code=403, 
+            detail="Creating tweets is disabled in mock mode"
+        )
+    
+    logger.info(f"📝 Creating new tweet{' as reply' if request.reply_to else ''}")
+    
+    async def post_tweet():
+        # If this is a reply, we need to include reply parameters
+        if request.reply_to:
+            # Get the original tweet to get its author info
+            original_tweet = await twitter_client.client.get_tweet_by_id(request.reply_to)
+            if not original_tweet:
+                raise HTTPException(status_code=404, detail="Reply target tweet not found")
+                
+            return await twitter_client.client.create_tweet(
+                text=request.text,
+                in_reply_to_status_id=request.reply_to,
+                auto_populate_reply_metadata=True
+            )
+        else:
+            # Regular tweet without reply
+            return await twitter_client.client.create_tweet(text=request.text)
+    
+    try:
+        tweet = await handle_twitter_request(post_tweet)
+        tweet_details = process_tweet_details(tweet)
+        logger.info(f"✅ Successfully posted tweet {tweet_details.id}")
+        
+        # Save the new tweet to database
+        await upsert_tweets_batch([
+            TweetData(
+                tweet_id=tweet_details.id,
+                tweet_user_name=tweet_details.author.name,
+                tweet_user_nick=tweet_details.author.username,
+                text=tweet_details.text,
+                created_at=tweet_details.created_at,
+                retweets=tweet_details.retweet_count,
+                likes=tweet_details.favorite_count,
+                photo_urls=tweet_details.photo_urls,
+                tweet_lang=tweet_details.lang,
+                in_reply_to_status_id=tweet_details.in_reply_to_status_id
+            )
+        ])
+        
+        return tweet_details
+        
+    except ExecutionStopError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create tweet: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
