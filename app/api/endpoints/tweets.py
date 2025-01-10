@@ -1,15 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Optional
 import time
 from random import randint
 from datetime import datetime
-from twikit import (
-    TooManyRequests, Unauthorized, TwitterException, 
-    BadRequest, Forbidden, NotFound, RequestTimeout, 
-    ServerError, AccountLocked
-)
 from app.models.schemas import SearchParams, TimelineParams, TweetData
 from app.api.common import twitter_client
+from app.api.utils import handle_twitter_request, ExecutionStopError
 from app.services.supabase import supabase
 import logging
 import random
@@ -18,31 +14,11 @@ import os
 import json
 from loguru import logger
 from app.api.scheduler import tweet_scheduler
+from pydantic import BaseModel
 
 router = APIRouter()
-ExecutionStopError = (asyncio.CancelledError, KeyboardInterrupt, SystemError)
 
 USE_TWITTER_MOCKS = os.getenv("USE_TWITTER_MOCKS", "false").lower() == "true"
-
-async def handle_twitter_request(request_func):
-    try:
-        await twitter_client.ensure_authenticated()
-        return await request_func()
-    except ExecutionStopError:
-        raise
-    except TooManyRequests:
-        raise HTTPException(status_code=429, detail="Rate limit reached")
-    except Unauthorized:
-        # Try to re-authenticate once
-        try:
-            await twitter_client.authenticate()
-            return await request_func()
-        except Exception as e:
-            raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
-    except (AccountLocked, BadRequest, Forbidden, NotFound, TwitterException) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (RequestTimeout, ServerError):
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
 
 async def upsert_tweets_batch(tweets_data: List[TweetData]):
     if not tweets_data:
