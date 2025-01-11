@@ -1,0 +1,500 @@
+{
+  "name": "Answer to Mentions",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "06ef42be-1d03-4935-9607-9e8dffc1d9a8",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        200
+      ],
+      "id": "a163e2c4-c483-4bea-b62c-4d80877a352d",
+      "name": "Webhook",
+      "webhookId": "06ef42be-1d03-4935-9607-9e8dffc1d9a8"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## You're an author who wrote the tweet:\n\n{{ $json.main_tweet.display_text }}\n\n\n### Here the list of replys:\n\n{{ $json.replies.map(item => {\nreturn `**${item.author.name} (${item.author.username}):**\\n${item.display_text}\\n`\n}).join('\\n') }}\n\n### Your target reply:\n\n**{{ $json.replies.last().author.name }}**\n{{ $json.replies.last().display_text }}\n\n### Rules for your answer for the target reply:\n\n- This should only be a reply to the target comment, all other comments are just for context.\n- Your answer must be short, maximum number of characters is 280. This is a critical requirement.\n- Please answer in English only.\n- Form the sentence correctly, using the writing style of the original tweet that was responded to.\n\nDetermine the sentiment of the last reply to your tweet, it can be positive, neutral or negative.\nDetermine whether the last reply is a question.\n\nYour answer should be in the JSON format:\n{\n  \"tweet_id\": \"{{ $json.replies[0].id }}\",\n  \"tweet_text\": \"_target_reply_text\",\n  \"answer\": \"_your_answer_here_\",\n  \"is_question\": _define_it_,\n  \"sentiment\": \"_sentiment_\",\n}\n\nImportant:\n- Don't change the tweet_id field!",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        560,
+        -160
+      ],
+      "id": "04e244e1-3c53-4fb4-af49-9f5423bd3a91",
+      "name": "AI Agent",
+      "alwaysOutputData": true,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        400,
+        440
+      ],
+      "id": "bb2ecea5-f767-4e2b-95d8-4b30ef36cb0c",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "p3AXWLB0yNiFR5gj",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://twimate-api:4750/api/tweets/{{ $json.body.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        100
+      ],
+      "id": "04a3b1db-906c-430d-be80-52a359d4da00",
+      "name": "Get Tweet"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## You're an author who wrote the tweet:\n\n{{ $json.display_text }}\n\n### Rules for your answer:\n\n- Your answer must be short, maximum number of characters is 280. This is a critical requirement.\n- Don't use menschens, don't mention any of the users.\n- Please answer in English only.\n- Form the sentence correctly, using the writing style of the original tweet that was responded to.\n\n### Try to determine:\n\n_sentiment_ = the sentiment of the tweet, it can be positive, neutral or negative only.\n_is_question_ = is the tweeet a question? Use true or false without quotes, just boolean.\n\nYour answer should be in the JSON format:\n{\n  \"tweet_id\": \"{{ $json.id }}\",\n  \"tweet_text\": \"_target_reply_text\",\n  \"answer\": \"_your_answer_here_\",\n  \"is_question\": _is_question_,\n  \"sentiment\": \"_sentiment_\",\n}\n\nImportant:\n- Don't change the tweet_id field!",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        580,
+        260
+      ],
+      "id": "b5fb2869-9288-488a-8ede-8456559772e2",
+      "name": "AI Agent1",
+      "alwaysOutputData": true,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aa8e1b7e-2817-443f-ad04-8253702ba11e",
+              "leftValue": "={{ $json.output.tweet_id }}",
+              "rightValue": "positive",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1220,
+        420
+      ],
+      "id": "88b991d6-4519-4276-aa50-a860f9901b10",
+      "name": "If has tweet_id"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2bd2023e-7acf-486b-a8c8-4bb264a46fab",
+              "leftValue": "={{ $json.output.sentiment }}",
+              "rightValue": "positive",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1500,
+        200
+      ],
+      "id": "74bd6d0e-05d7-440d-95ee-ddeb88953f3b",
+      "name": "If positive"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2bd2023e-7acf-486b-a8c8-4bb264a46fab",
+              "leftValue": "={{ $json.output.is_question }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "aa8e1b7e-2817-443f-ad04-8253702ba11e",
+              "leftValue": "={{ $json.output.sentiment }}",
+              "rightValue": "positive",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        380
+      ],
+      "id": "b847357f-5a32-4197-a5db-a510f04f433b",
+      "name": "If positive or question"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c85d00d3-7b14-4b26-a233-5d5da87688dc",
+              "leftValue": "={{ $json.in_reply_to }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        0
+      ],
+      "id": "9c6c5978-68b0-4256-af8d-c836635b62de",
+      "name": "If reply"
+    },
+    {
+      "parameters": {
+        "url": "=http://twimate-api:4750/api/tweets/replies/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "until_id",
+              "value": "={{ $json.tweet_details.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        -160
+      ],
+      "id": "70ae7cf5-e799-4b63-9e77-e75886d67230",
+      "name": "Get parent tweet with replies"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4e671b6e-069d-411b-955c-67d82eee69e9",
+              "name": "output",
+              "value": "={{ $json.output.parseJson() }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1020,
+        0
+      ],
+      "id": "235a3e9b-f266-4fef-bf7e-706d8c9c98da",
+      "name": "Parse JSON"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        360
+      ],
+      "id": "c36148b1-56cd-45e2-864a-451c03897c54",
+      "name": "Wait 1s",
+      "webhookId": "86109a99-47db-44ed-a457-6f33c49d22bd"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://twimate-api:4750/api/tweets/favorite_tweet/{{ $json.output.tweet_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        180
+      ],
+      "id": "adc388b6-5ae3-4670-9eba-8d280c03154c",
+      "name": "Like triggered tweet"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://twimate-api:4750/api/tweets/new",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.output.answer }}"
+            },
+            {
+              "name": "reply_to",
+              "value": "={{ $json.output.tweet_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        360
+      ],
+      "id": "a3150b0c-d217-42cc-8448-2a647528907d",
+      "name": "Reply parent tweet"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Tweet": {
+      "main": [
+        [
+          {
+            "node": "If reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If has tweet_id": {
+      "main": [
+        [
+          {
+            "node": "If positive or question",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If positive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If positive": {
+      "main": [
+        [
+          {
+            "node": "Like triggered tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If positive or question": {
+      "main": [
+        [
+          {
+            "node": "Wait 1s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If reply": {
+      "main": [
+        [
+          {
+            "node": "Get parent tweet with replies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get parent tweet with replies": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "If has tweet_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1s": {
+      "main": [
+        [
+          {
+            "node": "Reply parent tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "79b76aa3-f806-4152-8c44-de884b057f9c",
+  "meta": {
+    "instanceId": "1e05f1459943e6b9f633b709786c22d9a9613799a09976b4ea98545d3b0b413d"
+  },
+  "id": "FN81ywpoIQVZg19s",
+  "tags": []
+}

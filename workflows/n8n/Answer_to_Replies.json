@@ -1,5 +1,5 @@
 {
-  "name": "Answer to reply",
+  "name": "Answer to Replies",
   "nodes": [
     {
       "parameters": {
@@ -11,54 +11,13 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "id": "9ffdc54f-c545-4304-9776-5ce33213315f",
       "name": "Webhook",
       "webhookId": "3ba5982b-7b97-4cae-9f16-48005600a03f"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://twimate-api:4750/api/notifications",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "contentType": "raw",
-        "body": "={{ $json.body }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [220, 0],
-      "id": "991d09c0-4f9e-4637-a825-44710ee38095",
-      "name": "HTTP Request"
-    },
-    {
-      "parameters": {
-        "url": "=http://twimate-api:4750/api/tweets/replies/{{ $json.tweet_details.in_reply_to }}",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "until_id",
-              "value": "={{ $json.tweet_details.id }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [440, 0],
-      "id": "d53761f6-6039-4031-8265-cd835f539094",
-      "name": "HTTP Request1"
     },
     {
       "parameters": {
@@ -68,7 +27,10 @@
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
-      "position": [660, 0],
+      "position": [
+        660,
+        0
+      ],
       "id": "e5272c08-4ab7-492c-a9d6-918cd231ecc1",
       "name": "AI Agent",
       "alwaysOutputData": true,
@@ -81,7 +43,10 @@
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
       "typeVersion": 1,
-      "position": [640, 280],
+      "position": [
+        640,
+        280
+      ],
       "id": "c6e4f8f0-5d78-4c78-b5fa-bdad9a60ee3b",
       "name": "Groq Chat Model",
       "credentials": {
@@ -93,13 +58,40 @@
     },
     {
       "parameters": {
-        "html": "<!DOCTYPE html>\n\n<html>\n<head>\n  <meta charset=\"UTF-8\" />\n  <title>My HTML document</title>\n</head>\n<body>\n  <div class=\"container\">\n    <h1>Answer</h1>\n    <p>{{ $json.output.tweet_id }}</p>\n    <p>{{ $json.output.answer }}</p>\n    <p>{{ $json.output.sentiment }}</p>\n    <p>{{ $json.output.is_question }}</p>\n  </div>\n</body>\n</html>\n\n<style>\n.container {\n  background-color: #ffffff;\n  text-align: center;\n  padding: 16px;\n  border-radius: 8px;\n}\n\nh1 {\n  color: #ff6d5a;\n  font-size: 24px;\n  font-weight: bold;\n  padding: 8px;\n}\n\nh2 {\n  color: #909399;\n  font-size: 18px;\n  font-weight: bold;\n  padding: 8px;\n}\n</style>\n\n<script>\nconsole.log(\"Hello World!\");\n</script>"
+        "url": "=http://twimate-api:4750/api/tweets/{{ $json.body.id }}",
+        "options": {}
       },
-      "type": "n8n-nodes-base.html",
-      "typeVersion": 1.2,
-      "position": [1320, 0],
-      "id": "0581ebcb-bb17-4be7-813a-911e6df77075",
-      "name": "HTML"
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "991d09c0-4f9e-4637-a825-44710ee38095",
+      "name": "Get Tweet"
+    },
+    {
+      "parameters": {
+        "url": "=http://twimate-api:4750/api/tweets/replies/{{ $json.in_reply_to }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "until_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "d53761f6-6039-4031-8265-cd835f539094",
+      "name": "Get parent tweet with replies"
     },
     {
       "parameters": {
@@ -117,74 +109,12 @@
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1020, 0],
+      "position": [
+        1020,
+        0
+      ],
       "id": "d05167e7-623e-40e3-adce-9257b53bf2f9",
-      "name": "Edit Fields"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "2bd2023e-7acf-486b-a8c8-4bb264a46fab",
-              "leftValue": "={{ $json.output.is_question }}",
-              "rightValue": "true",
-              "operator": {
-                "type": "boolean",
-                "operation": "false",
-                "singleValue": true
-              }
-            },
-            {
-              "id": "aa8e1b7e-2817-443f-ad04-8253702ba11e",
-              "leftValue": "={{ $json.output.sentiment }}",
-              "rightValue": "positive",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "or"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [1520, 380],
-      "id": "d7ef0224-91e1-4947-91ef-4e06f968bb93",
-      "name": "If"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://twimate-api:4750/api/tweets/new",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "text",
-              "value": "={{ $json.output.answer }}"
-            },
-            {
-              "name": "reply_to",
-              "value": "={{ $json.output.tweet_id }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1980, 380],
-      "id": "258b423b-4c52-479b-b1d9-0fb894e88ee2",
-      "name": "HTTP Request2"
+      "name": "Parse JSON"
     },
     {
       "parameters": {
@@ -213,9 +143,12 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1240, 380],
+      "position": [
+        1240,
+        380
+      ],
       "id": "84b1e9f5-7919-425f-993e-ca6bbbfd8438",
-      "name": "If1"
+      "name": "If tweet_id"
     },
     {
       "parameters": {
@@ -243,9 +176,26 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1500, 200],
+      "position": [
+        1500,
+        200
+      ],
       "id": "ac35b5c4-8e86-4479-8eff-0df80b6beae7",
-      "name": "If2"
+      "name": "If positive"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        360
+      ],
+      "id": "6908792d-c3ac-4892-bb37-ed520cc105d8",
+      "name": "Wait 1s",
+      "webhookId": "f4d82b29-3db4-41e3-b250-52b95fba9be9"
     },
     {
       "parameters": {
@@ -268,20 +218,83 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1820, 160],
+      "position": [
+        1820,
+        160
+      ],
       "id": "3b3c372c-f8ad-4162-aa87-02c5fd98eb26",
-      "name": "HTTP Request3"
+      "name": "Like triggered tweet"
     },
     {
       "parameters": {
-        "amount": 1
+        "method": "POST",
+        "url": "http://twimate-api:4750/api/tweets/new",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $json.output.answer }}"
+            },
+            {
+              "name": "reply_to",
+              "value": "={{ $json.output.tweet_id }}"
+            }
+          ]
+        },
+        "options": {}
       },
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1.1,
-      "position": [1760, 360],
-      "id": "6908792d-c3ac-4892-bb37-ed520cc105d8",
-      "name": "Wait",
-      "webhookId": "f4d82b29-3db4-41e3-b250-52b95fba9be9"
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        380
+      ],
+      "id": "258b423b-4c52-479b-b1d9-0fb894e88ee2",
+      "name": "Reply parent tweet"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2bd2023e-7acf-486b-a8c8-4bb264a46fab",
+              "leftValue": "={{ $json.output.is_question }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "aa8e1b7e-2817-443f-ad04-8253702ba11e",
+              "leftValue": "={{ $json.output.sentiment }}",
+              "rightValue": "positive",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        380
+      ],
+      "id": "d7ef0224-91e1-4947-91ef-4e06f968bb93",
+      "name": "If positive or question"
     }
   ],
   "pinData": {},
@@ -290,29 +303,7 @@
       "main": [
         [
           {
-            "node": "HTTP Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP Request": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP Request1": {
-      "main": [
-        [
-          {
-            "node": "AI Agent",
+            "node": "Get Tweet",
             "type": "main",
             "index": 0
           }
@@ -334,72 +325,89 @@
       "main": [
         [
           {
-            "node": "Edit Fields",
+            "node": "Parse JSON",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Edit Fields": {
+    "Get Tweet": {
       "main": [
         [
           {
-            "node": "HTML",
+            "node": "Get parent tweet with replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get parent tweet with replies": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON": {
+      "main": [
+        [
+          {
+            "node": "If tweet_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If tweet_id": {
+      "main": [
+        [
+          {
+            "node": "If positive or question",
             "type": "main",
             "index": 0
           },
           {
-            "node": "If1",
+            "node": "If positive",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "If": {
+    "If positive": {
       "main": [
         [
           {
-            "node": "Wait",
+            "node": "Like triggered tweet",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "If1": {
+    "Wait 1s": {
       "main": [
         [
           {
-            "node": "If",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "If2",
+            "node": "Reply parent tweet",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "If2": {
+    "If positive or question": {
       "main": [
         [
           {
-            "node": "HTTP Request3",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Wait": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request2",
+            "node": "Wait 1s",
             "type": "main",
             "index": 0
           }
@@ -411,7 +419,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "802a2887-74e5-4482-b0c0-7970bf64144f",
+  "versionId": "06d441e1-99af-4cc3-a5de-2a59fb96f450",
   "meta": {
     "instanceId": "1e05f1459943e6b9f633b709786c22d9a9613799a09976b4ea98545d3b0b413d"
   },
