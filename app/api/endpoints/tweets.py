@@ -362,3 +362,32 @@ async def create_tweet(request: CreateTweetRequest):
     except Exception as e:
         logger.error(f"Failed to create tweet: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{tweet_id}", response_model=TweetDetails)
+async def get_tweet_by_id(tweet_id: str):
+    """Get a tweet by its ID"""
+    logger.info(f"🔎  Fetching tweet with ID {tweet_id}...")
+    
+    if USE_TWITTER_MOCKS:
+        logger.warning("🚧 Getting tweet functionality is not available in mock mode")
+        raise HTTPException(
+            status_code=403, 
+            detail="Getting tweet functionality is not available in mock mode"
+        )
+    
+    async def fetch_tweet():
+        tweet = await twitter_client.client.get_tweet_by_id(tweet_id)
+        if not tweet:
+            raise HTTPException(status_code=404, detail="Tweet not found")
+        return tweet
+
+    try:
+        tweet_details = await handle_twitter_request(fetch_tweet)
+        logger.info(f"✅  Successfully fetched tweet {tweet_details.id}")
+        return process_tweet_details(tweet_details)
+        
+    except ExecutionStopError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get tweet {tweet_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
