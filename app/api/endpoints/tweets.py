@@ -1,11 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 import time
 from random import randint
 from datetime import datetime
 from app.models.schemas import SearchParams, TimelineParams, TweetData
 from app.api.common import twitter_client
-from app.api.utils import handle_twitter_request, ExecutionStopError
+from app.api.utils import handle_twitter_request, ExecutionStopError, process_tweet_details
 from app.services.supabase import supabase
 import logging
 import random
@@ -15,6 +15,8 @@ import json
 from loguru import logger
 from app.api.scheduler import tweet_scheduler
 from pydantic import BaseModel
+from app.models.tweet_schemas import TweetThread, TweetDetails, CreateTweetRequest
+from app.api.utils.tweet_utils import process_tweet_details
 
 router = APIRouter()
 
@@ -250,4 +252,113 @@ async def favorite_tweet(tweet_id: int):
         raise
     except Exception as e:
         logger.error(f"Failed to favorite tweet {tweet_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/replies/{tweet_id}", response_model=TweetThread)
+async def get_tweet_replies(
+    tweet_id: str, 
+    limit: int = Query(default=100, le=1000, description="Maximum number of replies to fetch"),
+    until_id: Optional[str] = Query(None, description="Collect replies until this tweet ID (inclusive)")
+):
+    """Get replies for a specific tweet with pagination"""
+    logger.info(f"🔎  Fetching up to {limit} replies for tweet {tweet_id} (until_id={until_id})...")
+    
+    if USE_TWITTER_MOCKS:
+        logger.warning("🚧 Getting replies functionality is not available in mock mode")
+        raise HTTPException(
+            status_code=403, 
+            detail="Getting replies functionality is not available in mock mode"
+        )
+    
+    async def get_replies():
+        # Get main tweet first
+        main_tweet = await twitter_client.client.get_tweet_by_id(tweet_id)
+        if not main_tweet:
+            raise HTTPException(status_code=404, detail="Tweet not found")
+            
+        main_tweet_details = process_tweet_details(main_tweet)
+        
+        # If tweet has no replies, return early
+        if not main_tweet.replies:
+            return TweetThread(main_tweet=main_tweet_details, replies=[])
+            
+        replies = []
+        max_pages = 5  # Limit the number of pages
+        page_count = 0
+        
+        # Get initial replies
+        current_replies = main_tweet.replies
+        while current_replies and len(replies) < limit and page_count < max_pages:
+            # Process current page of replies
+            for reply in current_replies[:limit - len(replies)]:
+                reply_details = process_tweet_details(reply)
+                replies.append(reply_details)
+                
+                # Check if we reached the until_id
+                if until_id and reply_details.id == until_id:
+                    return TweetThread(main_tweet=main_tweet_details, replies=replies)
+            
+            # Try to get next page
+            has_next = await current_replies.next() if current_replies else None
+            if len(replies) < limit and has_next:
+                page_count += 1
+                current_replies = await current_replies.next()
+            else:
+                break
+                    
+        return TweetThread(
+            main_tweet=main_tweet_details,
+            replies=replies[:limit]  # Cut to requested limit
+        )
+
+    try:
+        result = await handle_twitter_request(get_replies)
+        logger.info(f"✅  Successfully fetched main tweet and {len(result.replies)} replies")
+        return result
+        
+    except ExecutionStopError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get replies for tweet {tweet_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/new", response_model=TweetDetails)
+async def create_tweet(request: CreateTweetRequest):
+    """Create a new tweet, optionally as a reply to another tweet"""
+    if USE_TWITTER_MOCKS:
+        logger.warning("🚧 Creating tweets is disabled in mock mode")
+        raise HTTPException(
+            status_code=403, 
+            detail="Creating tweets is disabled in mock mode"
+        )
+    
+    logger.info(f"📝 Creating new tweet{' as reply' if request.reply_to else ''}")
+    
+    async def post_tweet():
+        # If this is a reply, we need to include reply parameters
+        if request.reply_to:
+            # Get the original tweet to get its author info
+            original_tweet = await twitter_client.client.get_tweet_by_id(request.reply_to)
+            if not original_tweet:
+                raise HTTPException(status_code=404, detail="Reply target tweet not found")
+                
+            return await twitter_client.client.create_tweet(
+                text=request.text,
+                reply_to=request.reply_to
+            )
+        else:
+            # Regular tweet without reply
+            return await twitter_client.client.create_tweet(text=request.text)
+    
+    try:
+        tweet = await handle_twitter_request(post_tweet)
+        tweet_details = process_tweet_details(tweet)
+        logger.info(f"✅ Successfully posted tweet {tweet_details.id}")
+        
+        return tweet_details
+        
+    except ExecutionStopError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create tweet: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))

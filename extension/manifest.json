@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Twitter Notification Tracker",
+  "version": "1.0",
+  "description": "Tracks Twitter notifications and sends POST requests",
+  "permissions": ["tabs", "activeTab"],
+  "host_permissions": ["https://x.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/notifications"],
+      "js": ["content.js"]
+    }
+  ]
+}
