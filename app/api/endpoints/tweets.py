@@ -355,22 +355,6 @@ async def create_tweet(request: CreateTweetRequest):
         tweet_details = process_tweet_details(tweet)
         logger.info(f"✅ Successfully posted tweet {tweet_details.id}")
         
-        # Save the new tweet to database
-        await upsert_tweets_batch([
-            TweetData(
-                tweet_id=tweet_details.id,
-                tweet_user_name=tweet_details.author.name,
-                tweet_user_nick=tweet_details.author.username,
-                text=tweet_details.text,
-                created_at=tweet_details.created_at,
-                retweets=tweet_details.retweet_count,
-                likes=tweet_details.favorite_count,
-                photo_urls=tweet_details.photo_urls,
-                tweet_lang=tweet_details.lang,
-                in_reply_to_status_id=tweet_details.in_reply_to_status_id
-            )
-        ])
-        
         return tweet_details
         
     except ExecutionStopError:
