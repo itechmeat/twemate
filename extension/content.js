@@ -1,12 +1,18 @@
 // content.js
 const TWEET_SELECTOR =
   '[data-testid="cellInnerDiv"] article[data-testid="tweet"]';
-const YOUR_API_ENDPOINT =
+const REPLY_API_ENDPOINT =
   "http://localhost:5678/webhook/3ba5982b-7b97-4cae-9f16-48005600a03f";
+const MENTION_WEBHOOK_ENDPOINT =
+  "http://localhost:5678/webhook/06ef42be-1d03-4935-9607-9e8dffc1d9a8";
 const DB_NAME = "TweetsDB";
 const DB_VERSION = 1;
 const STORE_NAME = "processed_tweets";
 let hasProcessedTweets = false; // Flag to track tweet processing
+
+// Add tweet queue and processing flag
+const tweetQueue = new Map();
+let isProcessing = false;
 
 // Initialize IndexedDB
 async function initDB() {
@@ -134,15 +140,66 @@ function isTestMode() {
   return localStorage.getItem("twitter_extension_test_mode") === "true";
 }
 
-// Send POST request to the endpoint
-async function sendNotification(notificationData) {
+// Add flag to track processed tweets in memory to prevent duplicates
+const processedTweetIds = new Set();
+
+// Add function to get account username
+function getAccountUsername() {
+  const profileLink = document.querySelector(
+    'a[data-testid="AppTabBar_Profile_Link"]'
+  );
+  return profileLink?.getAttribute("href")?.replace("/", "") || null;
+}
+
+// Modify isMention to check for specific account mention
+function isMention(tweet) {
+  const accountUsername = getAccountUsername();
+  if (!accountUsername) {
+    logWithTimestamp(
+      "Could not determine account username, skipping mention check"
+    );
+    return false;
+  }
+
+  // Check if tweet text contains specific mention
+  const tweetText = tweet.querySelector('[data-testid="tweetText"]');
+  const mentionPattern = new RegExp(`@${accountUsername}\\b`);
+  const hasMention = mentionPattern.test(tweetText?.textContent || "");
+
+  // Verify that mention is an actual link
+  const mentionLinks = tweet.querySelectorAll(
+    '[data-testid="tweetText"] a[href^="/"][role="link"]'
+  );
+  const hasMentionLink = Array.from(mentionLinks).some(
+    (link) => link.getAttribute("href") === `/${accountUsername}`
+  );
+
+  return hasMention && hasMentionLink;
+}
+
+// Modify isReply to be independent
+function isReply(tweet) {
+  const replyingToText = tweet.querySelector(
+    '[id^="id__"][style*="color: rgb(113, 118, 123)"]'
+  );
+  return replyingToText?.textContent.includes("Replying to") || false;
+}
+
+// Modify sendNotification to handle different endpoints
+async function sendNotification(notificationData, isMentionType = false) {
+  const endpoint = isMentionType
+    ? MENTION_WEBHOOK_ENDPOINT
+    : REPLY_API_ENDPOINT;
+
   logWithTimestamp(
-    "Attempting to send notification, raw data:",
+    `Attempting to send ${
+      isMentionType ? "mention" : "reply"
+    } notification, raw data:`,
     notificationData
   );
 
   try {
-    const response = await fetch(YOUR_API_ENDPOINT, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -154,23 +211,27 @@ async function sendNotification(notificationData) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    logWithTimestamp("Notification sent successfully:", {
-      status: response.status,
-      data: notificationData,
-    });
+    logWithTimestamp(
+      `${isMentionType ? "Mention" : "Reply"} notification sent successfully:`,
+      {
+        status: response.status,
+        data: notificationData,
+      }
+    );
   } catch (error) {
-    logWithTimestamp("Error sending notification:", {
-      error: error.message,
-      data: notificationData,
-    });
+    logWithTimestamp(
+      `Error sending ${isMentionType ? "mention" : "reply"} notification:`,
+      {
+        error: error.message,
+        data: notificationData,
+      }
+    );
   }
 }
 
-// Process single tweet
+// Modify processTweet to handle all checks
 async function processTweet(tweet) {
-  logWithTimestamp("Starting to process tweet element:", tweet);
-
-  // Find tweet link and ID
+  // Find tweet ID first
   const tweetLink = tweet.querySelector('a[href*="/status/"][role="link"]');
   const tweetUrl = tweetLink ? tweetLink.getAttribute("href") : null;
   const tweetId = tweetUrl ? tweetUrl.split("/status/")[1] : null;
@@ -180,20 +241,28 @@ async function processTweet(tweet) {
     return;
   }
 
-  logWithTimestamp("Processing tweet:", { tweetId, url: tweetUrl });
-
-  // Check if tweet was already processed
-  const isProcessed = await isTweetProcessed(tweetId);
-  logWithTimestamp("Tweet processed status:", {
-    tweetId,
-    isProcessed,
-    testMode: isTestMode(),
-  });
-
-  if (isProcessed && !isTestMode()) {
-    logWithTimestamp("Tweet already processed, skipping:", tweetId);
+  // Check memory cache
+  if (processedTweetIds.has(tweetId) && !isTestMode()) {
+    logWithTimestamp(
+      "Tweet already processed in current session, skipping:",
+      tweetId
+    );
     return;
   }
+
+  // Check DB cache
+  const isProcessed = await isTweetProcessed(tweetId);
+  if (isProcessed && !isTestMode()) {
+    logWithTimestamp("Tweet already processed in DB, skipping:", tweetId);
+    processedTweetIds.add(tweetId); // Add to memory cache to prevent future DB checks
+    return;
+  }
+
+  // Rest of the processing logic...
+  logWithTimestamp("Starting to process tweet element:", tweet);
+
+  const isMentionType = isMention(tweet);
+  const isReplyType = !isMentionType && isReply(tweet);
 
   // Get tweet text content
   const tweetTextElement = tweet.querySelector('[data-testid="tweetText"]');
@@ -237,9 +306,10 @@ async function processTweet(tweet) {
       has_images: hasImages,
       has_video: hasVideo,
     },
-    is_reply: Boolean(
-      tweet.querySelector('[id^="id__"]')?.textContent?.includes("Replying to")
-    ),
+    types: {
+      is_reply: isReplyType,
+      is_mention: isMentionType,
+    },
     lang: tweetTextElement?.getAttribute("lang") || null,
     created_at: tweet.querySelector("time")?.getAttribute("datetime") || null,
     id: tweetId,
@@ -249,48 +319,115 @@ async function processTweet(tweet) {
     reprocessed: isProcessed,
   };
 
-  // Send data and mark as processed
-  await sendNotification(tweetData);
+  // Send notifications based on type
+  if (isMentionType) {
+    await sendNotification(tweetData, true);
+  } else if (isReplyType) {
+    await sendNotification(tweetData, false);
+  }
+
+  // Mark as processed
   if (!isTestMode()) {
-    logWithTimestamp("Test mode is OFF, saving to IndexedDB:", { tweetId });
     try {
       await markTweetProcessed(tweetId);
-      logWithTimestamp("Successfully saved to IndexedDB:", { tweetId });
+      processedTweetIds.add(tweetId);
+      logWithTimestamp("Successfully processed and cached tweet:", { tweetId });
     } catch (error) {
-      logWithTimestamp("Error saving to IndexedDB:", { tweetId, error });
+      logWithTimestamp("Error marking tweet as processed:", { tweetId, error });
     }
-  } else {
-    logWithTimestamp("Test mode is ON, skipping IndexedDB save:", { tweetId });
   }
 }
 
-// Process multiple tweets
+// Modify processTweetBatch to use Map
 async function processTweetBatch(tweets) {
-  logWithTimestamp(`Processing batch of tweets: ${tweets.length}`);
-  for (let i = 0; i < tweets.length; i++) {
-    logWithTimestamp(`Processing tweet ${i + 1} of ${tweets.length}`);
-    await processTweet(tweets[i]);
+  // Add new tweets to queue
+  tweets.forEach((tweet) => {
+    const tweetLink = tweet.querySelector('a[href*="/status/"][role="link"]');
+    const tweetUrl = tweetLink?.getAttribute("href");
+    const tweetId = tweetUrl?.split("/status/")[1];
+
+    if (tweetId) {
+      tweetQueue.set(tweetId, {
+        id: tweetId,
+        element: tweet,
+      });
+    }
+  });
+
+  // Process queue if not already processing
+  if (!isProcessing) {
+    await processQueue();
   }
 }
 
-// Observe DOM for changes
+// Modify queue processing function to use Map
+async function processQueue() {
+  if (isProcessing || tweetQueue.size === 0) {
+    return;
+  }
+
+  isProcessing = true;
+  logWithTimestamp(`Processing queue of ${tweetQueue.size} tweets`);
+
+  try {
+    for (const [tweetId, { element }] of tweetQueue) {
+      // Process tweet without memory cache check
+      await processTweet(element);
+
+      // Remove from queue after processing
+      tweetQueue.delete(tweetId);
+    }
+  } catch (error) {
+    logWithTimestamp("Error processing queue:", error);
+  } finally {
+    isProcessing = false;
+
+    // If new items were added during processing, process them
+    if (tweetQueue.size > 0) {
+      await processQueue();
+    }
+  }
+}
+
+// Modify observer to be more reliable
 function observeNotifications() {
   logWithTimestamp("Starting observer setup");
 
+  let debounceTimeout;
+  let observationCount = 0;
+  let isInitialProcessingDone = false;
+
   const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const tweets = node.querySelectorAll(TWEET_SELECTOR);
-            if (tweets.length > 0) {
-              logWithTimestamp(`Found ${tweets.length} new tweets in mutation`);
-              processTweetBatch(tweets);
-            }
-          }
-        });
-      }
+    observationCount++;
+    logWithTimestamp(`Mutation observed #${observationCount}:`, {
+      mutationsCount: mutations.length,
     });
+
+    // Clear existing timeout
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+    }
+
+    // Debounce tweet collection
+    debounceTimeout = setTimeout(() => {
+      // Get all current tweets on the page
+      const currentTweets = new Set(document.querySelectorAll(TWEET_SELECTOR));
+
+      logWithTimestamp("Found tweets on page:", {
+        total: currentTweets.size,
+        isInitialProcessing: !isInitialProcessingDone,
+      });
+
+      if (currentTweets.size > 0) {
+        processTweetBatch(Array.from(currentTweets));
+
+        // Mark initial processing as done
+        if (!isInitialProcessingDone) {
+          isInitialProcessingDone = true;
+          logWithTimestamp("Initial tweet processing completed");
+        }
+      }
+    }, 500); // Increased debounce time to 500ms
   });
 
   function startObserving() {
@@ -306,14 +443,12 @@ function observeNotifications() {
         subtree: true,
       });
 
-      // Handle existing tweets only once
-      if (!hasProcessedTweets) {
-        const initialTweets = timelineElement.querySelectorAll(TWEET_SELECTOR);
-        if (initialTweets.length > 0) {
-          logWithTimestamp(`Found ${initialTweets.length} initial tweets`);
-          processTweetBatch(initialTweets);
-          hasProcessedTweets = true;
-        }
+      // Process existing tweets once on startup
+      const initialTweets = document.querySelectorAll(TWEET_SELECTOR);
+      if (initialTweets.length > 0) {
+        logWithTimestamp(`Found ${initialTweets.length} initial tweets`);
+        processTweetBatch(Array.from(initialTweets));
+        isInitialProcessingDone = true;
       }
 
       // Clean up old records once per hour
@@ -328,7 +463,7 @@ function observeNotifications() {
 }
 
 // Initialize extension
-logWithTimestamp("Extension initialized");
+logWithTimestamp("Extension initialized, account:", getAccountUsername());
 
 // Start observing when page is ready
 if (document.readyState === "loading") {
@@ -340,3 +475,10 @@ if (document.readyState === "loading") {
   logWithTimestamp("Document already loaded - starting observer immediately");
   observeNotifications();
 }
+
+// Add cleanup for memory cache (e.g., every hour)
+setInterval(() => {
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  processedTweetIds.clear();
+  logWithTimestamp("Cleared memory cache of processed tweets");
+}, 60 * 60 * 1000);
